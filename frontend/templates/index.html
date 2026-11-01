@@ -1,0 +1,449 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LeafLens AI | Plant Identification</title>
+
+<style>
+:root {
+    --green: #166a43;
+    --light: #eaf5ee;
+    --bg: #f6f8f6;
+    --text: #17261e;
+    --muted: #5f7167;
+    --border: #e1e8e3;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+}
+
+header {
+    padding: 18px 5%;
+    background: white;
+    border-bottom: 1px solid var(--border);
+    font-size: 21px;
+    font-weight: bold;
+}
+
+header span { color: var(--green); }
+
+main {
+    max-width: 720px;
+    width: 92%;
+    margin: 35px auto;
+}
+
+.hero { text-align: center; margin-bottom: 28px; }
+
+.hero p { color: var(--muted); }
+
+.panel {
+    background: white;
+    padding: 25px;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 24px #0f3d2a0d;
+}
+
+.upload {
+    border: 2px dashed #b6c9bc;
+    border-radius: 14px;
+    padding: 30px 15px;
+    text-align: center;
+}
+
+.upload p { color: var(--muted); }
+
+button, .choose {
+    display: inline-block;
+    padding: 12px 20px;
+    border-radius: 9px;
+    font-size: 14px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.choose {
+    border: 1px solid var(--border);
+    background: white;
+}
+
+button {
+    border: none;
+    background: var(--green);
+    color: white;
+}
+
+button:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+
+#fileInput {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+#previewWrap {
+    display: none;
+    margin-top: 20px;
+}
+
+#preview {
+    max-width: 100%;
+    max-height: 280px;
+    display: block;
+    margin: auto;
+    border-radius: 12px;
+}
+
+#fileName {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 8px;
+    overflow-wrap: anywhere;
+}
+
+#identify {
+    width: 100%;
+    margin-top: 18px;
+}
+
+#status {
+    text-align: center;
+    color: var(--muted);
+    margin-top: 12px;
+}
+
+.error { color: #b3261e !important; }
+
+#result {
+    display: none;
+    border-top: 1px solid var(--border);
+    margin-top: 25px;
+    padding-top: 25px;
+}
+
+.result-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.label {
+    color: var(--muted);
+    font-size: 12px;
+    text-transform: uppercase;
+    font-weight: bold;
+}
+
+#plantName {
+    margin: 5px 0;
+    font-size: 28px;
+    overflow-wrap: anywhere;
+}
+
+.score {
+    color: var(--green);
+    background: var(--light);
+    border-radius: 20px;
+    padding: 7px 12px;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+.track {
+    height: 8px;
+    background: #e8eee9;
+    border-radius: 20px;
+    margin: 15px 0 22px;
+    overflow: hidden;
+}
+
+#scoreBar {
+    height: 100%;
+    width: 0;
+    background: var(--green);
+    transition: width .4s;
+}
+
+.info {
+    padding: 17px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-top: 13px;
+}
+
+.info h3 { margin: 0 0 6px; }
+
+.info p { margin: 0; white-space: pre-line; }
+
+.safety {
+    background: #fff8e6;
+    border-color: #f1deaa;
+}
+
+#warning {
+    margin-top: 16px;
+    padding: 13px;
+    border-radius: 10px;
+    background: #fff8e6;
+    color: #7a5a10;
+    font-size: 13px;
+}
+
+#reset {
+    margin-top: 18px;
+    background: white;
+    color: var(--text);
+    border: 1px solid var(--border);
+}
+
+footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 13px;
+    padding: 20px;
+}
+
+@media(max-width: 500px) {
+    .panel { padding: 17px; }
+}
+</style>
+</head>
+
+<body>
+<header>🌿 LeafLens <span>AI</span></header>
+
+<main>
+    <section class="hero">
+        <h1>Identify a Plant</h1>
+        <p>Upload a leaf photo to see one predicted species,
+        its model score, reported uses, and safety information.</p>
+    </section>
+
+    <section class="panel">
+        <div class="upload" id="upload">
+            <h3>Upload a leaf image</h3>
+            <p>Choose an image or drag and drop it here.<br>
+            JPG, PNG or BMP · Maximum 10 MB</p>
+
+            <label class="choose" for="fileInput">Choose Image</label>
+            <input type="file" id="fileInput"
+                   accept=".jpg,.jpeg,.png,.bmp,image/jpeg,image/png,image/bmp">
+
+            <div id="previewWrap">
+                <img id="preview" alt="Selected leaf image">
+                <div id="fileName"></div>
+            </div>
+        </div>
+
+        <button id="identify" disabled>Identify Leaf</button>
+        <div id="status" role="status"></div>
+
+        <section id="result">
+            <div class="result-head">
+                <div>
+                    <div class="label">Predicted species</div>
+                    <h2 id="plantName"></h2>
+                </div>
+                <div class="score" id="confidence"></div>
+            </div>
+
+            <div class="track">
+                <div id="scoreBar"></div>
+            </div>
+
+            <div class="info">
+                <h3>🌿 Reported Uses</h3>
+                <p id="uses"></p>
+            </div>
+
+            <div class="info safety">
+                <h3>⚠️ Edibility and Safety</h3>
+                <p id="edibility"></p>
+            </div>
+
+            <div class="info">
+                <h3>Safety Note</h3>
+                <p id="safety"></p>
+            </div>
+
+            <div id="warning"></div>
+            <button id="reset">Try Another Image</button>
+        </section>
+    </section>
+</main>
+
+<footer>
+    LeafLens AI · TensorFlow and MobileNetV2<br>
+    Never eat a plant based solely on an AI identification.
+</footer>
+
+<script>
+const input = document.getElementById("fileInput");
+const preview = document.getElementById("preview");
+const previewWrap = document.getElementById("previewWrap");
+const identify = document.getElementById("identify");
+const statusEl = document.getElementById("status");
+const result = document.getElementById("result");
+
+let selectedFile = null;
+let previewUrl = null;
+
+const allowedTypes = new Set([
+    "image/jpeg", "image/png", "image/bmp"
+]);
+
+function selectFile(file) {
+    result.style.display = "none";
+    statusEl.textContent = "";
+    statusEl.classList.remove("error");
+
+    if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+        previewUrl = null;
+    }
+
+    selectedFile = null;
+    input.value = "";
+    previewWrap.style.display = "none";
+    identify.disabled = true;
+
+    if (!file) return;
+
+    if (!allowedTypes.has(file.type)) {
+        statusEl.textContent = "Choose a JPG, PNG, or BMP image.";
+        statusEl.classList.add("error");
+        return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+        statusEl.textContent = "Image exceeds the 10 MB limit.";
+        statusEl.classList.add("error");
+        return;
+    }
+
+    selectedFile = file;
+    previewUrl = URL.createObjectURL(file);
+    preview.src = previewUrl;
+
+    document.getElementById("fileName").textContent = file.name;
+    previewWrap.style.display = "block";
+    identify.disabled = false;
+}
+
+input.addEventListener("change", () => {
+    selectFile(input.files[0]);
+});
+
+const upload = document.getElementById("upload");
+
+["dragenter", "dragover"].forEach(eventName => {
+    upload.addEventListener(eventName, event => {
+        event.preventDefault();
+        upload.style.background = "#eaf5ee";
+    });
+});
+
+["dragleave", "drop"].forEach(eventName => {
+    upload.addEventListener(eventName, event => {
+        event.preventDefault();
+        upload.style.background = "white";
+    });
+});
+
+upload.addEventListener("drop", event => {
+    selectFile(event.dataTransfer.files[0]);
+});
+
+identify.addEventListener("click", async () => {
+    if (!selectedFile) return;
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    identify.disabled = true;
+    identify.textContent = "Analyzing...";
+    statusEl.textContent = "";
+    result.style.display = "none";
+
+    try {
+        const response = await fetch("/predict", {
+            method: "POST",
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Prediction failed.");
+        }
+
+        const score = Math.min(
+            100, Math.max(0, Number(data.confidence) || 0)
+        );
+
+        document.getElementById("plantName").textContent =
+            data.prediction;
+
+        document.getElementById("confidence").textContent =
+            score.toFixed(2) + "% model score";
+
+        document.getElementById("scoreBar").style.width =
+            score + "%";
+
+        const info = data.plant_info || {};
+
+        document.getElementById("uses").textContent =
+            info.uses || "Uses have not been verified.";
+
+        document.getElementById("edibility").textContent =
+            info.edibility ||
+            "UNKNOWN — do not eat this plant based on an AI prediction.";
+
+        document.getElementById("safety").textContent =
+            info.safety ||
+            "Verify the species with a reliable botanical source.";
+
+        document.getElementById("warning").textContent =
+            data.warning || "AI prediction only. Verify independently.";
+
+        result.style.display = "block";
+        result.scrollIntoView({
+            behavior: "smooth",
+            block: "nearest"
+        });
+
+    } catch (error) {
+        statusEl.textContent = error.message;
+        statusEl.classList.add("error");
+    } finally {
+        identify.disabled = !selectedFile;
+        identify.textContent = "Identify Leaf";
+    }
+});
+
+document.getElementById("reset").addEventListener("click", () => {
+    selectFile(null);
+});
+
+window.addEventListener("beforeunload", () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+});
+</script>
+</body>
+</html>
