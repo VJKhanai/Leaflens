@@ -1,17 +1,17 @@
-
 import json
 from pathlib import Path
 
 import numpy as np
 import tensorflow as tf
 from flask import Flask, jsonify, request, render_template
+from flask_cors import CORS
 from PIL import Image, UnidentifiedImageError
 
 # PATHS
 ROOT = Path(__file__).resolve().parents[1]
 
-MODEL_PATH = ROOT / "ML" / "models" / "leaflens_mobilenetv2.keras"
-LABELS_PATH = ROOT / "ML" / "models" / "class_names.json"
+MODEL_PATH = ROOT / "ML" / "models" / "leaflens_mobilenetv2_grouped_windows.keras"
+LABELS_PATH = ROOT / "ML" / "models" / "class_names_grouped_windows.json"
 TEMPLATE_DIR = ROOT / "frontend" / "templates"
 
 IMAGE_SIZE = (160, 160)
@@ -20,6 +20,11 @@ LOW_CONFIDENCE_THRESHOLD = 60.0
 
 app = Flask(__name__, template_folder=str(TEMPLATE_DIR))
 app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE
+
+# React/Vite development server runs on port 8080.
+CORS(app, resources={r"/predict": {"origins": [
+    "http://localhost:8080", "http://127.0.0.1:8080"
+]}})
 
 
 # PLANT INFORMATION
@@ -442,7 +447,7 @@ if not MODEL_PATH.is_file():
 if not LABELS_PATH.is_file():
     raise FileNotFoundError(f"Labels not found: {LABELS_PATH}")
 
-model = tf.keras.models.load_model(MODEL_PATH)
+model = tf.keras.models.load_model(MODEL_PATH, compile=False)
 
 with LABELS_PATH.open("r", encoding="utf-8") as file:
     class_names = json.load(file)
@@ -488,10 +493,15 @@ def predict():
 
     try:
         with Image.open(uploaded_file.stream) as original:
-            image = original.convert("RGB").resize(IMAGE_SIZE)
+            # Convert to RGB; do not normalize because the model includes
+            # MobileNetV2 preprocessing internally.
+            image = original.convert("RGB")
+            image_array = np.asarray(image, dtype=np.float32)
 
-        image_array = np.asarray(image, dtype=np.float32)
-        image_array = np.expand_dims(image_array, axis=0)
+        image_array = tf.image.resize(
+            image_array, IMAGE_SIZE, method="bilinear"
+        )
+        image_array = np.expand_dims(image_array.numpy(), axis=0)
 
         # Preprocessing is already inside the trained model.
         probabilities = model.predict(image_array, verbose=0)[0]
@@ -543,5 +553,7 @@ def not_found(_error):
 
 if __name__ == "__main__":
     print("LeafLens AI starting...")
-    print("Website: http://127.0.0.1:8000/")
+    print("Flask API: http://127.0.0.1:8000/predict")
+    print("Health check: http://127.0.0.1:8000/health")
+    print("React UI: http://localhost:8080/")
     app.run(host="127.0.0.1", port=8000, debug=False)

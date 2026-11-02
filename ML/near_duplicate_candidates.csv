@@ -1,0 +1,6 @@
+class,split_a,path_a,split_b,path_b,distance
+Aloevera,train,B:\LeafLens-AI\ML\data\grouped\train\Aloevera\Aloevera_0012_0009_122.jpg,test,B:\LeafLens-AI\ML\data\grouped\test\Aloevera\Aloevera_0108_0013_156.jpg,4
+Aloevera,train,B:\LeafLens-AI\ML\data\grouped\train\Aloevera\Aloevera_0078_0071_120.jpg,test,B:\LeafLens-AI\ML\data\grouped\test\Aloevera\Aloevera_0108_0013_156.jpg,4
+Aloevera,val,B:\LeafLens-AI\ML\data\grouped\val\Aloevera\Aloevera_0097_0010_154.jpg,test,B:\LeafLens-AI\ML\data\grouped\test\Aloevera\Aloevera_0116_0014_162.jpg,2
+Curry,train,B:\LeafLens-AI\ML\data\grouped\train\Curry\Curry_0056_0059_420.jpg,val,B:\LeafLens-AI\ML\data\grouped\val\Curry\Curry_0135_0018_376.jpg,4
+Honge,train,B:\LeafLens-AI\ML\data\grouped\train\Honge\Honge_0003_0025_806.jpg,test,B:\LeafLens-AI\ML\data\grouped\test\Honge\Honge_0095_0011_852.jpg,4

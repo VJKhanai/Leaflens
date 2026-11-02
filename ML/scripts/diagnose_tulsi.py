@@ -41,8 +41,11 @@ for path in sorted(tulsi_dir.iterdir()):
 
     try:
         image = tf.keras.utils.load_img(
-            path, target_size=(160, 160), color_mode="rgb"
-        )
+    path,
+    target_size=(160, 160),
+    color_mode="rgb",
+    interpolation="bilinear"
+)
         array = tf.keras.utils.img_to_array(image)
         array = np.expand_dims(array, axis=0)
 

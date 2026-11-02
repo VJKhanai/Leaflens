@@ -3,3 +3,8 @@ ML/data/processed/
 
 # Ignore misclassified test image
 ML/tulsi_misclassified.png
+ML/data 
+.venv
+.venv_linux_backup
+
+Indian Medicinal Leaves Image Datasets
