@@ -1,10 +1,35 @@
-# Ignore processed dataset
-ML/data/processed/
+# Python environments
+.venv/
+.venv_ubuntu/
+.venv_linux_backup/
+venv/
+__pycache__/
+*.pyc
 
-# Ignore misclassified test image
-ML/tulsi_misclassified.png
-ML/data 
-.venv
-.venv_linux_backup
+# Node.js
+node_modules/
+frontend/node_modules/
+frontend/dist/
 
-Indian Medicinal Leaves Image Datasets
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Training datasets
+ML/data/
+ML/hybrid_quarantine/
+ML/hybrid_duplicate_review.jpg
+ML/hybrid_error_review.jpg
+
+# Model files
+*.keras
+*.h5
+
+# Generated reports
+ML/*_manifest.csv
+ML/*_duplicates.csv
+ML/*_candidates.csv
+
+# OS files
+.DS_Store

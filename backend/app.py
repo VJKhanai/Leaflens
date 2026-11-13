@@ -10,8 +10,9 @@ from PIL import Image, UnidentifiedImageError
 # PATHS
 ROOT = Path(__file__).resolve().parents[1]
 
-MODEL_PATH = ROOT / "ML" / "models" / "leaflens_mobilenetv2_grouped_windows.keras"
-LABELS_PATH = ROOT / "ML" / "models" / "class_names_grouped_windows.json"
+MODEL_PATH = ROOT / "ML" / "models" / "leaflens_mobilenetv2_hybrid_finetuned.keras"
+
+LABELS_PATH = ROOT / "ML" / "models" / "class_names_hybrid.json"
 TEMPLATE_DIR = ROOT / "frontend" / "templates"
 
 IMAGE_SIZE = (160, 160)
@@ -27,417 +28,1108 @@ CORS(app, resources={r"/predict": {"origins": [
 ]}})
 
 
-# PLANT INFORMATION
-# Unlisted species will show unknown edibility.
+# =========================================================
+# PLANT INFORMATION DATABASE
+# =========================================================
 
-def plant_info(uses, edibility, safety):
+def plant_info(
+    common_name,
+    scientific_name,
+    description,
+    benefits,
+    disadvantages,
+    proper_usage,
+    applications,
+    edibility,
+    harmful_compounds,
+    if_consumed,
+    precautions
+):
     return {
-        "uses": uses,
+        "common_name": common_name,
+        "scientific_name": scientific_name,
+        "description": description,
+        "benefits": benefits,
+        "disadvantages": disadvantages,
+        "proper_usage": proper_usage,
+        "applications": applications,
         "edibility": edibility,
-        "safety": safety
+        "harmful_compounds": harmful_compounds,
+        "if_consumed": if_consumed,
+        "precautions": precautions,
+
+        # Backward compatibility
+        "uses": " ".join(applications),
+        "safety": precautions
     }
 
 
+
 PLANT_INFO = {
+
     "Aloevera": plant_info(
-        "Aloe gel is used in topical skincare products.",
-        "Do not eat based on this prediction. Aloe latex can cause harmful effects.",
-        "Verify the species and plant part. Avoid homemade preparations for ingestion."
+        "Aloe Vera",
+        "Aloe vera",
+        "A succulent plant with thick, fleshy leaves containing clear gel.",
+        ["Aloe gel is used in moisturizing skincare products."],
+        ["May cause skin irritation or allergic reactions.",
+         "Aloe latex can cause harmful effects if swallowed."],
+        "Use commercially formulated topical products according to their labels.",
+        ["Skincare", "Cosmetics", "Personal care"],
+        "Do not consume based on AI identification.",
+        ["Aloin and other anthraquinones in aloe latex"],
+        "Swallowing aloe latex may cause abdominal cramps and diarrhea.",
+        "Avoid oral aloe latex. Verify the plant and plant part."
     ),
+
     "Amla": plant_info(
-        "Amla fruit is used in foods and traditional preparations.",
-        "The fruit is commonly eaten when correctly identified.",
-        "Do not assume every part or preparation is safe."
+        "Indian Gooseberry",
+        "Phyllanthus emblica",
+        "A tree producing round, sour fruits.",
+        ["Fruit provides vitamin C.",
+         "Used in food and traditional preparations."],
+        ["Excessive intake may cause digestive discomfort."],
+        "Use properly identified fruit in washed food preparations.",
+        ["Food", "Juices", "Pickles"],
+        "Ripe fruit is commonly eaten.",
+        ["No specific toxic compound assigned to ordinary fruit consumption."],
+        "Excessive intake may cause digestive discomfort.",
+        "Do not assume every plant part or preparation is safe."
     ),
+
     "Amruthaballi": plant_info(
-        "Tinospora cordifolia is a possible identification; it is traditionally used in herbal preparations.",
-        "Do not consume based on this prediction. Herbal preparations may cause adverse effects.",
-        "Confirm botanical identity and discuss medicinal use with a qualified professional."
+        "Amruthaballi / Guduchi",
+        "Possibly Tinospora cordifolia",
+        "A climbing plant traditionally used in herbal preparations.",
+        ["Has a history of traditional herbal use."],
+        ["Some Guduchi preparations have been associated with liver injury."],
+        "Do not self-medicate. Confirm the species before medicinal use.",
+        ["Traditional herbal preparations"],
+        "Do not consume based on AI identification.",
+        ["Plant constituents vary by species and preparation."],
+        "Some preparations may cause adverse effects, including liver injury.",
+        "Seek qualified medical advice before medicinal use."
     ),
+
     "Arali": plant_info(
-        "Arali may refer to an ornamental oleander plant in some regional usage.",
-        "POTENTIALLY FATAL TOXICITY. Do not eat any part if this is oleander.",
-        "Oleander can cause dangerous heart effects. Keep away from children and pets."
+        "Oleander (possible identification)",
+        "Possibly Nerium oleander",
+        "An ornamental shrub with flowers and narrow leaves.",
+        ["Primarily used as an ornamental plant."],
+        ["Can cause potentially fatal poisoning."],
+        "Ornamental use only. Never prepare food or home remedies from it.",
+        ["Ornamental gardening"],
+        "TOXIC. Do not eat any part if this is oleander.",
+        ["Cardiac glycosides, including oleandrin"],
+        "May cause vomiting and dangerous heart rhythm disturbances.",
+        "Keep away from children and pets. Seek emergency help if ingestion is suspected."
     ),
+
     "Astma_weed": plant_info(
-        "May refer to a plant used in traditional respiratory remedies; exact identity needs verification.",
+        "Asthma Weed",
+        "Scientific identity unconfirmed",
+        "Dataset label associated with a regional plant name.",
+        ["Traditional uses are reported but the species is unconfirmed."],
+        ["Incorrect identification may result in unsafe use."],
+        "Do not use medicinally until identified by a botanical expert.",
+        ["Not established"],
         "Unknown. Do not consume.",
-        "The common name is insufficient to establish identity or medicinal safety."
+        ["Unknown"],
+        "Effects cannot be predicted without species identification.",
+        "Obtain a verified scientific name before assigning uses or safety."
     ),
+
     "Badipala": plant_info(
-        "Uses require confirmation of the botanical species.",
-        "Unknown. Do not consume until identified.",
-        "Verify the regional name with a botanist or agricultural expert."
+        "Badipala",
+        "Scientific identity unconfirmed",
+        "Regional plant name requiring botanical verification.",
+        ["No verified species-specific benefits available."],
+        ["Incorrect identification may lead to unsafe use."],
+        "No recommended use until the species is confirmed.",
+        ["Not established"],
+        "Unknown. Do not consume.",
+        ["Unknown"],
+        "Effects cannot be determined without identification.",
+        "Confirm the scientific name with a botanical expert."
     ),
+
     "Balloon_Vine": plant_info(
-        "Cardiospermum halicacabum is used ornamentally and in some traditional preparations.",
-        "Do not eat based on this prediction; edibility needs species-specific verification.",
-        "Traditional use does not establish safety or effectiveness."
+        "Balloon Vine",
+        "Cardiospermum halicacabum",
+        "A climbing herb with inflated, balloon-like seed capsules.",
+        ["Has traditional topical and herbal uses."],
+        ["May cause allergic reactions or irritation."],
+        "Do not ingest based on AI identification.",
+        ["Traditional preparations", "Ornamental gardening"],
+        "Edibility not established.",
+        ["Species-specific composition requires verification."],
+        "Ingestion effects are not reliably established.",
+        "Confirm the species before medicinal use."
     ),
+
     "Bamboo": plant_info(
-        "Bamboo is used in construction, crafts, furniture and paper production.",
-        "Young shoots of certain species are eaten after appropriate preparation. This prediction does not establish species identity or safe preparation.",
-        "Never eat an unidentified bamboo plant or raw shoots without species-specific guidance."
+        "Bamboo",
+        "Bambusoideae",
+        "A group of fast-growing grasses with hollow or solid stems.",
+        ["Used in construction, furniture and paper production.",
+         "Some young shoots are used as food."],
+        ["Some raw shoots contain cyanogenic compounds."],
+        "Only verified edible species and properly processed shoots should be eaten.",
+        ["Construction", "Furniture", "Paper", "Food"],
+        "Some young shoots are edible after proper processing.",
+        ["Cyanogenic glycosides in some bamboo shoots"],
+        "Improperly prepared shoots may cause poisoning.",
+        "Never eat raw or unidentified bamboo shoots."
     ),
+
     "Beans": plant_info(
-        "Bean plants are grown for food and agriculture.",
-        "Some bean varieties are edible when properly prepared; some raw beans contain harmful compounds.",
-        "Confirm the species and preparation requirements before eating."
+        "Bean Plant",
+        "Fabaceae",
+        "A group of legume plants cultivated for pods and seeds.",
+        ["Provides plant protein and dietary fibre in edible varieties."],
+        ["Some raw beans contain compounds that can cause illness."],
+        "Eat only positively identified edible varieties prepared properly.",
+        ["Food", "Agriculture"],
+        "Variety-dependent. Not every bean is safe raw.",
+        ["Phytohaemagglutinin in some beans"],
+        "Raw or improperly cooked beans may cause vomiting and diarrhea.",
+        "Identify the variety and follow proper cooking instructions."
     ),
+
     "Betel": plant_info(
-        "Betel leaves are used in some cultural practices and preparations.",
-        "Do not assume the leaf or any preparation is safe to eat. Chewing mixtures may have serious health risks.",
-        "Avoid tobacco-containing betel mixtures; confirm plant identity."
+        "Betel Leaf",
+        "Piper betle",
+        "A climbing plant with broad aromatic leaves.",
+        ["Used in cultural practices and traditional preparations."],
+        ["Betel quid mixtures, especially those containing areca nut and tobacco, carry serious health risks."],
+        "Avoid tobacco-containing betel mixtures.",
+        ["Cultural practices", "Traditional preparations"],
+        "Do not assume medicinal preparations or chewing mixtures are safe.",
+        ["Risks depend on the preparation; areca nut and tobacco are major concerns."],
+        "Chewing betel quid can increase oral disease and cancer risk.",
+        "Avoid tobacco and areca nut mixtures."
     ),
+    
     "Bhrami": plant_info(
-        "May refer to Bacopa monnieri or another plant called Brahmi regionally.",
-        "Do not consume based on this prediction.",
-        "Brahmi is an ambiguous common name. Confirm the botanical species before medicinal use."
+        "Brahmi", "Possibly Bacopa monnieri",
+        "A regional name that can refer to different plants.",
+        ["Some species called Brahmi have traditional herbal uses."],
+        ["May cause digestive discomfort or medicine interactions."],
+        "Confirm the botanical species before medicinal use.",
+        ["Traditional herbal preparations"],
+        "Unknown. Do not consume based on prediction.",
+        ["Species-dependent compounds"],
+        "Possible digestive or other adverse effects.",
+        "Verify the exact scientific name."
     ),
+
     "Bringaraja": plant_info(
-        "Eclipta prostrata is used in some traditional hair and herbal preparations.",
-        "Edibility is not verified for this identification.",
-        "Do not ingest herbal preparations without qualified guidance."
+        "Bhringraj", "Eclipta prostrata",
+        "A small herb traditionally used in hair and herbal preparations.",
+        ["Used in some hair-care products."],
+        ["Evidence for many medicinal claims is limited."],
+        "Use verified external products according to their labels.",
+        ["Hair care", "Traditional preparations"],
+        "Edibility not established.",
+        ["Composition depends on preparation."],
+        "Ingestion safety is not established.",
+        "Avoid self-medication."
     ),
+
     "Caricature": plant_info(
-        "The dataset label needs botanical identification before uses can be assigned.",
+        "Caricature Plant", "Scientific identity unconfirmed",
+        "Dataset label requiring botanical identification.",
+        ["No verified benefits assigned."],
+        ["Incorrect identification can result in unsafe use."],
+        "No food or medicinal use until identified.",
+        ["Not established"],
         "Unknown. Do not consume.",
-        "Confirm the scientific name; do not infer safety from this label."
+        ["Unknown"],
+        "Effects cannot be predicted.",
+        "Confirm the scientific name."
     ),
+
     "Castor": plant_info(
-        "Castor oil is produced from processed seeds for specific industrial and regulated applications.",
-        "TOXIC. Castor seeds contain ricin, a highly toxic substance. Never eat them.",
-        "Keep seeds away from children and pets. Seek urgent medical assistance if ingestion is suspected."
+        "Castor", "Ricinus communis",
+        "A shrub with large palmate leaves and seed capsules.",
+        ["Processed castor oil has industrial applications."],
+        ["Seeds are highly poisonous."],
+        "Never process or consume seeds at home.",
+        ["Industrial oil", "Manufacturing"],
+        "TOXIC. Never eat castor seeds.",
+        ["Ricin in castor seeds"],
+        "Can cause severe vomiting, diarrhea and life-threatening poisoning.",
+        "Keep seeds away from children and pets. Seek urgent medical care after suspected ingestion."
     ),
+
     "Catharanthus": plant_info(
-        "Catharanthus roseus is grown as an ornamental plant and is a source of compounds used in regulated medicines.",
-        "TOXICITY RISK. Do not eat or prepare home remedies from this plant.",
-        "Contains potent alkaloids. Medicinal compounds must only be used in regulated treatment."
+        "Madagascar Periwinkle", "Catharanthus roseus",
+        "An ornamental flowering plant with glossy leaves.",
+        ["Source of compounds used in regulated cancer medicines."],
+        ["Contains potent alkaloids and can be poisonous."],
+        "Ornamental use only. Never prepare homemade medicines.",
+        ["Ornamental gardening", "Pharmaceutical research"],
+        "TOXICITY RISK. Do not eat any part.",
+        ["Vincristine, vinblastine and other alkaloids"],
+        "Ingestion may cause harmful effects.",
+        "Keep away from children and pets."
     ),
+
     "Chakte": plant_info(
-        "Regional plant identity and uses require verification.",
+        "Chakte", "Scientific identity unconfirmed",
+        "Regional plant name requiring botanical verification.",
+        ["No verified benefits assigned."],
+        ["Misidentification may cause harmful use."],
+        "No recommended use until identified.",
+        ["Not established"],
         "Unknown. Do not consume.",
-        "Obtain a botanical identification before assigning uses or safety."
+        ["Unknown"],
+        "Unknown.",
+        "Obtain botanical identification."
     ),
+
     "Chilly": plant_info(
-        "Chilli plants produce fruits used as spices and vegetables.",
-        "Correctly identified chilli fruits are commonly eaten; leaves and other parts should not be assumed edible.",
-        "Chilli can irritate skin and eyes. Confirm the plant before consumption."
+        "Chilli", "Capsicum species",
+        "A plant producing spicy fruits used as spices and vegetables.",
+        ["Fruits add flavour to food.",
+         "Some varieties provide vitamin C."],
+        ["Can irritate skin, eyes and digestive tract."],
+        "Use confirmed edible fruits in normal food quantities.",
+        ["Cooking", "Spices", "Food processing"],
+        "Verified fruits are commonly eaten; do not assume leaves are edible.",
+        ["Capsaicinoids including capsaicin"],
+        "Excessive intake can cause burning and stomach discomfort.",
+        "Wash hands after handling and avoid touching eyes."
     ),
+
     "Citron lime (herelikai)": plant_info(
-        "Citrus fruits may be used in cooking, drinks and flavouring; this regional label needs confirmation.",
+        "Citron / Regional Citrus", "Citrus species; unconfirmed",
+        "A citrus-related regional dataset label.",
+        ["Some citrus fruits are used in cooking and drinks."],
+        ["Citrus oils may irritate sensitive skin."],
+        "Use only confirmed edible fruit.",
+        ["Cooking", "Drinks", "Flavouring"],
         "Only confirmed edible citrus fruit should be eaten.",
-        "Verify the exact citrus species and fruit identity."
+        ["Citrus essential oils and furocoumarins"],
+        "Effects depend on the species and plant part.",
+        "Verify the exact citrus species."
     ),
+
     "Coffee": plant_info(
-        "Coffee plants are cultivated for their beans, which are processed into coffee.",
-        "Processed coffee beans are commonly consumed. Do not eat unidentified berries or plant parts.",
-        "Caffeine can cause adverse effects in excess; avoid unverified plant preparations."
+        "Coffee", "Coffea species",
+        "An evergreen shrub producing coffee berries.",
+        ["Processed beans are used to prepare beverages."],
+        ["Excess caffeine may cause insomnia and palpitations."],
+        "Consume commercially processed coffee in moderation.",
+        ["Beverages", "Food processing"],
+        "Processed coffee beans are commonly consumed.",
+        ["Caffeine"],
+        "Excessive caffeine may cause restlessness and rapid heartbeat.",
+        "Avoid excessive caffeine and unidentified berries."
     ),
+
     "Common rue(naagdalli)": plant_info(
-        "Rue is grown as an ornamental plant and has a history of traditional use.",
-        "UNSAFE FOR SELF-MEDICATION. Rue can be toxic, particularly in concentrated preparations.",
-        "May cause photosensitivity and serious adverse effects. Avoid ingestion, especially during pregnancy."
+        "Common Rue", "Possibly Ruta graveolens",
+        "An aromatic herb with divided leaves.",
+        ["Historically used as an ornamental plant."],
+        ["Can cause photosensitivity and poisoning."],
+        "Do not ingest or use as a homemade remedy.",
+        ["Ornamental gardening"],
+        "Unsafe for self-medication. Avoid ingestion.",
+        ["Furanocoumarins and other active compounds"],
+        "May cause vomiting, abdominal pain and serious reactions.",
+        "Avoid ingestion, especially during pregnancy."
     ),
+
     "Coriender": plant_info(
-        "Coriander leaves are widely used as a culinary herb.",
-        "Coriander leaves are commonly eaten when correctly identified.",
-        "Confirm identity before eating an unfamiliar plant."
+        "Coriander", "Coriandrum sativum",
+        "An aromatic herb used in cooking.",
+        ["Adds flavour to food.",
+         "Provides aromatic plant compounds."],
+        ["Can cause allergic reactions in sensitive individuals."],
+        "Wash leaves and use in normal food quantities.",
+        ["Cooking", "Spices", "Food processing"],
+        "Commonly eaten as a culinary herb.",
+        ["No specific toxin assigned to ordinary culinary use."],
+        "Allergic individuals may develop reactions.",
+        "Avoid if allergic and wash before use."
     ),
+
     "Curry": plant_info(
-        "Curry leaf is commonly used to flavour foods.",
-        "Curry leaves are commonly eaten when correctly identified.",
-        "Verify identity before eating an unfamiliar plant."
+        "Curry Leaf", "Bergera koenigii",
+        "A small tree with aromatic compound leaves.",
+        ["Used to flavour food.",
+         "Contains aromatic plant compounds."],
+        ["Allergic reactions are possible."],
+        "Wash and use correctly identified leaves in cooking.",
+        ["Cooking", "Seasoning", "Food preparation"],
+        "Commonly eaten as a culinary herb.",
+        ["No specific toxin assigned to normal culinary use."],
+        "Individual allergies are possible.",
+        "Do not confuse with unrelated curry-scented plants."
     ),
+
     "Doddpathre": plant_info(
-        "May refer to an aromatic Coleus/Plectranthus species used in regional cooking and traditional practices.",
-        "Do not consume based only on this prediction; regional names may refer to different plants.",
-        "Confirm the botanical species and appropriate use."
+        "Doddapatre", "Possibly Coleus amboinicus",
+        "An aromatic plant with thick, fleshy leaves.",
+        ["Used in some regional cooking and traditional practices."],
+        ["Regional names may refer to different species."],
+        "Confirm species before using leaves in food or remedies.",
+        ["Regional cooking", "Traditional preparations"],
+        "Do not consume based only on prediction.",
+        ["Species-dependent essential oils"],
+        "Effects depend on actual species and preparation.",
+        "Verify botanical identity."
     ),
+
     "Drumstick": plant_info(
-        "Moringa is cultivated for its pods and leaves and is used as food.",
-        "Certain properly identified moringa parts are eaten as food; preparation varies by part.",
-        "Confirm the plant and plant part before eating."
+        "Drumstick / Moringa", "Moringa oleifera",
+        "A tree with compound leaves and long seed pods.",
+        ["Leaves and pods are used as vegetables.",
+         "Leaves provide nutrients."],
+        ["Concentrated extracts may cause adverse effects."],
+        "Wash and properly prepare edible leaves and pods.",
+        ["Food", "Agriculture", "Traditional products"],
+        "Certain properly identified parts are commonly eaten.",
+        ["No specific toxin assigned to ordinary cooked leaves and pods."],
+        "Concentrated preparations may cause adverse effects.",
+        "Avoid unsupervised medicinal extracts."
     ),
+
     "Ekka": plant_info(
-        "May refer to Calotropis, a plant used in some traditional practices.",
+        "Calotropis / Ekka", "Possibly Calotropis gigantea",
+        "A shrub with thick leaves and milky latex.",
+        ["Has traditional and fibre-related uses."],
+        ["Latex is irritating and the plant can be poisonous."],
+        "Do not eat or prepare homemade remedies.",
+        ["Fibre", "Ornamental uses"],
         "TOXIC. Do not eat any part.",
-        "Calotropis sap can irritate skin and eyes and can be poisonous. Avoid home remedies."
+        ["Cardiac glycosides"],
+        "May cause irritation, vomiting and serious heart effects.",
+        "Avoid latex contact. Keep away from children and pets."
     ),
+
     "Eucalyptus": plant_info(
-        "Eucalyptus is used for timber, essential oils and other commercial products.",
-        "Do not eat the leaves or essential oil. Eucalyptus oil can be poisonous if swallowed.",
-        "Keep essential oils away from children. Use only products intended for their labelled purpose."
+        "Eucalyptus", "Eucalyptus species",
+        "A group of aromatic trees with oil-containing leaves.",
+        ["Used for timber, paper and commercial products."],
+        ["Essential oil can be poisonous if swallowed."],
+        "Use only labelled commercial products as directed.",
+        ["Timber", "Paper", "Essential oils"],
+        "Do not eat leaves or essential oil.",
+        ["1,8-cineole and other volatile oils"],
+        "Swallowing eucalyptus oil can cause seizures and serious poisoning.",
+        "Keep essential oils away from children."
     ),
+
     "Ganigale": plant_info(
-        "Uses cannot be assigned reliably until the local name is matched to a botanical species.",
+        "Ganigale", "Scientific identity unconfirmed",
+        "Regional plant label requiring botanical verification.",
+        ["No verified benefits assigned."],
+        ["Unknown identity creates misidentification risk."],
+        "No recommended food or medicinal use.",
+        ["Not established"],
         "Unknown. Do not consume.",
-        "Verify the species with a botanist or agricultural expert."
+        ["Unknown"],
+        "Unknown.",
+        "Verify the species with a botanist."
     ),
+
     "Ganike": plant_info(
-        "The regional name needs botanical verification before uses can be described.",
+        "Ganike", "Scientific identity unconfirmed",
+        "Regional plant name requiring confirmation.",
+        ["No reliable species-specific benefits assigned."],
+        ["Misidentification may cause harmful use."],
+        "Do not consume until identified.",
+        ["Not established"],
         "Unknown. Do not consume.",
-        "Do not assume edibility or medicinal safety from the model label."
+        ["Unknown"],
+        "Unknown.",
+        "Consult a botanical expert."
     ),
+
     "Gasagase": plant_info(
-        "May refer regionally to poppy seeds or a related plant; the leaf label alone is insufficient to identify it.",
-        "Do not consume based on this prediction. Food uses depend on confirmed identity and plant part.",
-        "Confirm the species and local name; do not use unidentified plants medicinally."
+        "Gasagase", "Species unconfirmed",
+        "A regional name that may refer to poppy seeds or a related plant.",
+        ["Some verified poppy seeds are used in cooking."],
+        ["Different species and plant parts have different safety profiles."],
+        "Do not use unidentified plant material as food or medicine.",
+        ["Food seasoning, subject to confirmed identity"],
+        "The label does not establish edibility.",
+        ["Opium alkaloids occur in some poppy species and parts."],
+        "Effects depend on exact species and plant part.",
+        "Confirm the species and plant part."
     ),
+
     "Ginger": plant_info(
-        "Ginger rhizomes are used as a culinary spice and in traditional preparations.",
-        "The familiar culinary rhizome is commonly eaten when correctly identified.",
-        "The model identifies a leaf image, not the identity or safety of a harvested rhizome."
+        "Ginger", "Zingiber officinale",
+        "A herbaceous plant with narrow leaves and an aromatic rhizome.",
+        ["Rhizome is widely used as a culinary spice."],
+        ["May cause heartburn or digestive discomfort."],
+        "Use the correctly identified and cleaned rhizome in food.",
+        ["Cooking", "Beverages", "Food processing"],
+        "Rhizome is commonly eaten, not necessarily the leaves.",
+        ["Gingerols and related compounds"],
+        "Large amounts may cause heartburn and stomach upset.",
+        "Use normal food quantities."
     ),
+
     "Globe Amarnath": plant_info(
-        "Grown as an ornamental plant; some related amaranths are used as food.",
-        "Edibility of this specific species is not confirmed by this label.",
-        "Do not assume related species share the same food safety."
+        "Globe Amaranth", "Gomphrena globosa",
+        "An ornamental plant with round, colourful flower heads.",
+        ["Grown for ornamental and decorative purposes."],
+        ["Food safety of this species is not established here."],
+        "Use as an ornamental plant.",
+        ["Ornamental gardening", "Decorative arrangements"],
+        "Unknown. Do not consume.",
+        ["Species-specific composition requires verification."],
+        "Ingestion effects are not established.",
+        "Do not assume related amaranths share the same edibility."
     ),
+
     "Guava": plant_info(
-        "Guava is grown for its edible fruit; leaves are also used in some traditional preparations.",
-        "The correctly identified ripe fruit is commonly eaten.",
-        "This leaf prediction does not confirm fruit identity or medicinal safety."
+        "Guava", "Psidium guajava",
+        "A tropical fruit tree with aromatic leaves and edible fruit.",
+        ["Fruit provides vitamin C and dietary fibre.",
+         "Leaves have traditional uses."],
+        ["Some people may experience allergies or digestive discomfort."],
+        "Wash and eat correctly identified ripe fruit.",
+        ["Food", "Juices", "Jams", "Traditional preparations"],
+        "Ripe fruit is commonly eaten.",
+        ["No specific toxin assigned to normal ripe fruit."],
+        "Excessive fruit intake may cause digestive discomfort.",
+        "Leaf extracts are not a substitute for medical treatment."
     ),
+
     "Henna": plant_info(
-        "Henna leaves are used to prepare dye for skin and hair.",
+        "Henna", "Lawsonia inermis",
+        "A shrub whose leaves are processed to produce natural dye.",
+        ["Leaves are used in traditional hair and skin dye products."],
+        ["May cause allergic reactions.",
+         "Some black henna products contain harmful added chemicals."],
+        "Use verified external-use products only.",
+        ["Hair dye", "Body art", "Cosmetics"],
         "Do not eat henna leaves or ingest henna products.",
-        "Henna is for external dye use; avoid ingestion and be cautious with products of uncertain composition."
+        ["Lawsone; adulterated products may contain additional chemicals."],
+        "Ingestion can be harmful.",
+        "External use only. Avoid products of uncertain composition."
     ),
+
     "Hibiscus": plant_info(
-        "Hibiscus species are grown ornamentally; certain species and parts are used in foods and drinks.",
-        "Edibility depends on the exact species and plant part; this prediction does not confirm either.",
-        "Verify the species before consuming any part."
+        "Hibiscus", "Hibiscus species; exact species unconfirmed",
+        "A group of flowering plants with colourful blooms.",
+        ["Some species and parts are used in food and beverages.",
+         "Many species are ornamental."],
+        ["Safety differs between species and plant parts."],
+        "Use only food-grade material from an identified edible species.",
+        ["Ornamental gardening", "Beverages", "Food products"],
+        "Species- and part-dependent.",
+        ["Species-specific compounds require verification."],
+        "Effects depend on actual species and preparation.",
+        "Verify the exact species before ingestion."
     ),
+
     "Honge": plant_info(
-        "May refer to Pongamia pinnata, a tree used for shade and oil-related applications.",
-        "Do not eat seeds or other parts based on this prediction.",
-        "Confirm the species and avoid ingesting unprocessed plant products."
+        "Indian Beech / Honge", "Millettia pinnata",
+        "A tree with compound leaves and oil-bearing seeds.",
+        ["Used for shade, soil improvement and industrial oil."],
+        ["Seeds and unprocessed oil are not suitable for casual consumption."],
+        "Do not ingest unprocessed plant products.",
+        ["Shade", "Agroforestry", "Industrial oil"],
+        "Do not eat seeds or leaves based on prediction.",
+        ["Karanjin and pongamol"],
+        "Ingestion of unprocessed parts may cause adverse effects.",
+        "Keep seeds and oils away from children and pets."
     ),
+
     "Insulin": plant_info(
-        "May refer to a plant marketed as an insulin plant, often Costus igneus, in traditional practices.",
-        "Do not consume based on this prediction or use it to manage diabetes.",
-        "Plant identity and medicinal effectiveness require verification. Never replace prescribed diabetes treatment."
+        "Insulin Plant", "Possibly Chamaecostus cuspidatus",
+        "A plant marketed in some regions as an insulin plant.",
+        ["Has a history of traditional use."],
+        ["Diabetes-treatment claims are not established by identification.",
+         "May interact with diabetes medicines."],
+        "Never replace prescribed diabetes medication with this plant.",
+        ["Ornamental gardening", "Traditional herbal use"],
+        "Do not consume based on prediction.",
+        ["Plant constituents require verification."],
+        "Possible interactions with blood glucose treatment.",
+        "Consult a healthcare professional."
     ),
+
     "Jackfruit": plant_info(
-        "Jackfruit is cultivated for its fruit and seeds, which are used in food after appropriate preparation.",
-        "Ripe fruit and properly cooked seeds are commonly eaten when correctly identified.",
-        "The leaf prediction does not establish fruit identity or safe preparation."
+        "Jackfruit", "Artocarpus heterophyllus",
+        "A tropical tree producing large edible fruits.",
+        ["Fruit provides energy and dietary fibre.",
+         "Seeds are used as food after cooking."],
+        ["May cause digestive discomfort or allergies."],
+        "Eat properly identified ripe fruit; cook seeds thoroughly.",
+        ["Food", "Cooking", "Food processing"],
+        "Ripe fruit and properly cooked seeds are commonly eaten.",
+        ["No specific toxin assigned to normal ripe fruit."],
+        "Improperly prepared parts may cause digestive problems.",
+        "Do not eat seeds raw. Check for allergies."
     ),
+
     "Jasmine": plant_info(
-        "Jasmine species are grown for fragrant flowers, ornamentals and perfumes.",
-        "Do not assume the leaves or flowers are edible; species and preparation matter.",
-        "Confirm the exact species before ingestion or medicinal use."
+        "Jasmine", "Jasminum species",
+        "A group of flowering shrubs and climbers known for fragrance.",
+        ["Flowers are used in fragrance and ornamental products."],
+        ["Edibility and safety differ between species."],
+        "Do not consume unidentified plant parts.",
+        ["Perfumes", "Ornamental gardening", "Floral products"],
+        "Do not assume leaves or flowers are edible.",
+        ["Species-specific composition requires verification."],
+        "Cannot be predicted without exact identification.",
+        "Confirm the botanical species."
     ),
+
     "Kambajala": plant_info(
-        "This regional label requires botanical verification.",
+        "Kambajala", "Scientific identity unconfirmed",
+        "Regional name requiring botanical identification.",
+        ["No species-specific benefits verified."],
+        ["Potential misidentification risk."],
+        "No recommended use until confirmed.",
+        ["Not established"],
         "Unknown. Do not consume.",
-        "A reliable scientific name is needed before describing uses or edibility."
+        ["Unknown"],
+        "Unknown.",
+        "Obtain the scientific name from an expert."
     ),
+
     "Kasambruga": plant_info(
-        "The local name cannot be confidently mapped to a botanical species here.",
+        "Kasambruga", "Scientific identity unconfirmed",
+        "Regional dataset name requiring confirmation.",
+        ["No verified benefits assigned."],
+        ["Misidentification may lead to harmful use."],
+        "Do not consume until identified.",
+        ["Not established"],
         "Unknown. Do not consume.",
-        "Verify the scientific name with a botanical expert."
+        ["Unknown"],
+        "Unknown.",
+        "Verify the scientific name."
     ),
+
     "Kohlrabi": plant_info(
-        "Kohlrabi is grown as a vegetable for its swollen stem and leaves.",
-        "Correctly identified kohlrabi is commonly eaten as food.",
-        "Wash produce and confirm identity before eating."
+        "Kohlrabi", "Brassica oleracea var. gongylodes",
+        "A vegetable with a swollen edible stem and leafy tops.",
+        ["Provides fibre and vitamin C.",
+         "Used as a vegetable."],
+        ["May cause gas or bloating."],
+        "Wash and cook or prepare properly identified produce.",
+        ["Food", "Cooking", "Agriculture"],
+        "Commonly eaten as a vegetable.",
+        ["Glucosinolates"],
+        "Normal food quantities are generally tolerated.",
+        "Wash thoroughly and confirm identity."
     ),
+
     "Lantana": plant_info(
-        "Lantana is primarily an ornamental plant and can be invasive.",
-        "TOXICITY RISK. Do not eat berries, leaves or other parts.",
-        "Some lantana parts can poison people and animals. Keep away from children and pets."
+        "Lantana", "Lantana camara",
+        "A flowering shrub commonly grown as an ornamental plant.",
+        ["Used as an ornamental plant."],
+        ["Can be invasive and toxic to people and animals."],
+        "Ornamental use only. Never eat berries or leaves.",
+        ["Ornamental gardening"],
+        "TOXICITY RISK. Do not eat any part.",
+        ["Triterpenoids including lantadene compounds"],
+        "May cause vomiting, diarrhea and liver-related toxicity.",
+        "Keep away from children and pets."
     ),
+
     "Lemon": plant_info(
-        "Lemon fruit is used in cooking, drinks and flavouring.",
-        "The correctly identified fruit is commonly eaten as food.",
-        "The leaf prediction does not confirm the identity of a fruit or its safety."
+        "Lemon", "Citrus limon",
+        "A citrus tree producing sour fruits.",
+        ["Fruit provides vitamin C.",
+         "Used in cooking and drinks."],
+        ["Acidic juice may irritate sensitive skin and teeth."],
+        "Use washed, correctly identified fruit.",
+        ["Cooking", "Beverages", "Food processing"],
+        "Fruit is commonly eaten.",
+        ["Citric acid and citrus oils"],
+        "Large amounts may irritate the stomach.",
+        "Avoid eye contact with juice."
     ),
+
     "Malabar_Nut": plant_info(
-        "May refer to Justicia adhatoda, traditionally used in respiratory herbal preparations.",
-        "Do not consume or self-medicate based on this prediction.",
-        "Verify the species and seek qualified medical advice before medicinal use."
+        "Malabar Nut", "Justicia adhatoda",
+        "A shrub traditionally used in respiratory preparations.",
+        ["Has a history of traditional herbal use."],
+        ["Medicinal preparations may have contraindications."],
+        "Do not self-medicate with leaf extracts.",
+        ["Traditional herbal preparations"],
+        "Do not consume based on prediction.",
+        ["Vasicine and related alkaloids"],
+        "Effects depend on dose and preparation.",
+        "Seek medical advice, especially during pregnancy."
     ),
+
     "Malabar_Spinach": plant_info(
-        "Malabar spinach is cultivated as a leafy vegetable.",
-        "Correctly identified leaves and shoots are commonly eaten after appropriate washing and preparation.",
-        "Confirm identity before eating an unfamiliar plant."
+        "Malabar Spinach", "Basella alba",
+        "A climbing leafy vegetable with thick, fleshy leaves.",
+        ["Provides leafy vegetables for cooking.",
+         "Contains fibre and micronutrients."],
+        ["May cause digestive discomfort."],
+        "Wash and cook correctly identified leaves and shoots.",
+        ["Food", "Cooking", "Home gardening"],
+        "Leaves and shoots are commonly eaten.",
+        ["No specific toxin assigned to ordinary cooked portions."],
+        "Large quantities may cause digestive discomfort.",
+        "Confirm species and wash thoroughly."
     ),
+
     "Mango": plant_info(
-        "Mango is cultivated for its edible fruit; leaves have cultural and traditional uses.",
-        "Ripe mango fruit is commonly eaten. Do not eat leaves based on this prediction.",
-        "Mango sap and peel can irritate or trigger reactions in some people."
+        "Mango", "Mangifera indica",
+        "A tropical tree grown for its sweet fruit.",
+        ["Fruit provides vitamins and dietary fibre."],
+        ["Sap and peel may cause contact dermatitis."],
+        "Eat washed, ripe fruit. Do not eat leaves based on prediction.",
+        ["Food", "Juices", "Pickles"],
+        "Ripe fruit is commonly eaten.",
+        ["Urushiol-related compounds in sap and peel"],
+        "Unsuitable plant parts may cause irritation.",
+        "Avoid sap contact if sensitive."
     ),
+
     "Marigold": plant_info(
-        "Marigolds are grown as ornamental plants; some species have horticultural uses.",
-        "Do not assume this species or its parts are edible.",
-        "Confirm the species before using flowers or leaves in food or remedies."
+        "Marigold", "Tagetes species",
+        "A group of flowering plants grown in gardens.",
+        ["Used ornamentally and in horticulture."],
+        ["May cause skin irritation or allergic reactions."],
+        "Do not eat unless the exact species is confirmed food-safe.",
+        ["Ornamental gardening", "Horticulture"],
+        "Do not assume this species is edible.",
+        ["Essential oils and thiophenes vary by species."],
+        "Effects depend on species and quantity.",
+        "Never eat pesticide-treated garden flowers."
     ),
+
     "Mint": plant_info(
-        "Some mint species are used in food, drinks and flavouring.",
-        "Some correctly identified mint leaves are edible; this prediction may be wrong.",
-        "Confirm the species before eating."
+        "Mint", "Mentha species",
+        "An aromatic herb used in cooking and beverages.",
+        ["Some mint leaves are used in food.",
+         "Adds aroma and flavour."],
+        ["Can worsen reflux in some people.",
+         "Concentrated oils can be harmful."],
+        "Use positively identified culinary mint leaves.",
+        ["Cooking", "Beverages", "Food flavouring"],
+        "Some verified mint species are edible.",
+        ["Menthol and other essential-oil compounds"],
+        "Large amounts of concentrated oil may cause poisoning.",
+        "Do not swallow concentrated essential oils."
     ),
+
     "Neem": plant_info(
-        "Neem has traditional topical and agricultural uses.",
-        "Do not ingest neem oil or use this prediction to decide edibility.",
-        "Some neem preparations can be harmful if swallowed. Seek professional guidance before medicinal use."
+        "Neem", "Azadirachta indica",
+        "A tropical tree with compound leaves and bitter plant parts.",
+        ["Used in agricultural and topical products.",
+         "Has traditional uses."],
+        ["Neem oil can be poisonous if swallowed."],
+        "Use only labelled products as directed.",
+        ["Agriculture", "Pest management", "Topical products"],
+        "Do not ingest neem oil or unidentified preparations.",
+        ["Azadirachtin and other limonoids"],
+        "Swallowing neem oil can cause seizures and serious poisoning.",
+        "Keep neem oil away from children."
     ),
+
     "Nelavembu": plant_info(
-        "May refer to Andrographis paniculata, used in some traditional herbal preparations.",
-        "Do not consume based on this prediction or use it as self-treatment.",
-        "Verify the species and discuss potential interactions with a qualified healthcare professional."
+        "King of Bitters", "Possibly Andrographis paniculata",
+        "A bitter herb used in traditional preparations.",
+        ["Has a history of traditional herbal use."],
+        ["May cause gastrointestinal effects and allergic reactions."],
+        "Do not self-medicate with concentrated extracts.",
+        ["Traditional herbal products"],
+        "Do not consume based on prediction.",
+        ["Andrographolides"],
+        "May cause nausea, vomiting, diarrhea or allergic reactions.",
+        "Check for medicine interactions and seek professional advice."
     ),
+
     "Nerale": plant_info(
-        "May refer to jamun (Syzygium cumini), a tree cultivated for its fruit.",
-        "The correctly identified ripe fruit is commonly eaten; this label does not confirm identity.",
-        "Confirm the species and plant part before consumption."
+        "Jamun", "Possibly Syzygium cumini",
+        "A tree cultivated for dark purple edible fruits.",
+        ["Fruit is used in food and beverages."],
+        ["Excessive intake may cause digestive discomfort."],
+        "Eat only correctly identified ripe fruit.",
+        ["Food", "Juices"],
+        "Ripe fruit is commonly eaten.",
+        ["No specific toxin assigned to normal ripe fruit."],
+        "Excessive intake may cause digestive discomfort.",
+        "Do not use extracts to manage diabetes without medical advice."
     ),
+
     "Nooni": plant_info(
-        "May refer to noni (Morinda citrifolia), whose fruit is used in some food and traditional products.",
-        "Do not consume based on this prediction. Safety depends on the exact species and preparation.",
-        "Verify the plant and seek professional advice before using concentrated products."
+        "Noni", "Possibly Morinda citrifolia",
+        "A tropical plant whose fruit is used in some products.",
+        ["Fruit is used in some food and commercial preparations."],
+        ["Some concentrated products have been associated with liver concerns."],
+        "Do not use concentrated products as medicine without advice.",
+        ["Food products", "Commercial preparations"],
+        "Do not consume based on prediction.",
+        ["Composition varies by product."],
+        "Adverse effects and liver concerns have been reported with some products.",
+        "Consult a healthcare professional."
     ),
+
     "Onion": plant_info(
-        "Onion is cultivated as a vegetable and culinary flavouring.",
-        "Correctly identified onion bulbs are commonly eaten.",
-        "The leaf prediction does not confirm that a harvested bulb is onion."
+        "Onion", "Allium cepa",
+        "A cultivated vegetable with a bulb and green leaves.",
+        ["Bulbs are widely used in cooking."],
+        ["May cause digestive discomfort."],
+        "Use washed, correctly identified bulbs in food.",
+        ["Cooking", "Food processing", "Agriculture"],
+        "Bulbs are commonly eaten.",
+        ["Organosulfur compounds"],
+        "Excess intake may cause bloating.",
+        "Do not assume an unknown bulb is onion."
     ),
+
     "Padri": plant_info(
-        "This regional plant name requires botanical verification.",
+        "Padri", "Scientific identity unconfirmed",
+        "Regional name requiring botanical verification.",
+        ["No species-specific benefits verified."],
+        ["Unknown identity makes use unsafe."],
+        "No recommended use until identified.",
+        ["Not established"],
         "Unknown. Do not consume.",
-        "Confirm the scientific name before assigning food or medicinal uses."
+        ["Unknown"],
+        "Unknown.",
+        "Confirm the scientific name."
     ),
+
     "Palak(Spinach)": plant_info(
-        "Spinach is cultivated as a leafy vegetable.",
-        "Correctly identified spinach leaves are commonly eaten after washing and appropriate preparation.",
-        "People prone to kidney stones may need individualized advice about high-oxalate foods."
+        "Spinach", "Spinacia oleracea",
+        "A leafy vegetable cultivated for its edible leaves.",
+        ["Provides folate and vitamin K.",
+         "Used in cooked dishes."],
+        ["Contains oxalates, relevant to some people with kidney stone risk."],
+        "Wash thoroughly and prepare as a vegetable.",
+        ["Cooking", "Food processing", "Agriculture"],
+        "Commonly eaten as a leafy vegetable.",
+        ["Oxalates"],
+        "Excessive intake may not suit everyone.",
+        "Follow individualized dietary advice when medically necessary."
     ),
+
     "Papaya": plant_info(
-        "Papaya is cultivated for its fruit; other parts have traditional uses.",
-        "Ripe fruit is commonly eaten when correctly identified. Do not eat leaves or seeds based on this prediction.",
-        "Papaya latex can cause reactions; extra caution is needed during pregnancy and with unverified preparations."
+        "Papaya", "Carica papaya",
+        "A tropical plant producing large edible fruits.",
+        ["Ripe fruit provides vitamin C and dietary fibre."],
+        ["Latex can irritate skin.",
+         "Unripe papaya preparations may be unsuitable during pregnancy."],
+        "Eat properly identified ripe fruit.",
+        ["Food", "Juices", "Food processing"],
+        "Ripe fruit is commonly eaten.",
+        ["Papain and latex-related compounds"],
+        "Unripe latex-containing parts may cause adverse reactions.",
+        "Seek medical advice before medicinal use, especially during pregnancy."
     ),
+
     "Parijatha": plant_info(
-        "May refer to Nyctanthes arbor-tristis, grown for its fragrant flowers.",
-        "Do not consume based on this prediction; food safety is not established here.",
-        "Verify the botanical species before medicinal use."
+        "Night-flowering Jasmine", "Possibly Nyctanthes arbor-tristis",
+        "A small tree or shrub with fragrant flowers.",
+        ["Flowers are used ornamentally and traditionally."],
+        ["Medicinal safety and effectiveness are not established for home use."],
+        "Use as an ornamental plant; avoid homemade remedies.",
+        ["Ornamental gardening", "Traditional preparations"],
+        "Do not consume based on prediction.",
+        ["Species-specific composition requires verification."],
+        "Effects depend on plant part and preparation.",
+        "Verify species before medicinal use."
     ),
+
     "Pea": plant_info(
-        "Pea plants are grown for their edible seeds and pods.",
-        "Correctly identified peas are commonly eaten; preparation depends on the variety.",
-        "Confirm identity before eating an unfamiliar plant."
+        "Pea", "Pisum sativum",
+        "A legume grown for edible pods and seeds.",
+        ["Provides plant protein and dietary fibre."],
+        ["May cause gas or digestive discomfort."],
+        "Wash and properly prepare identified peas and pods.",
+        ["Food", "Agriculture", "Food processing"],
+        "Commonly eaten.",
+        ["No specific toxin assigned to normal edible peas."],
+        "Excess intake may cause bloating.",
+        "Confirm identity before eating unfamiliar pods."
     ),
+
     "Pomoegranate": plant_info(
-        "Pomegranate is cultivated for its edible arils and juice.",
-        "The correctly identified ripe fruit is commonly eaten.",
-        "This leaf prediction does not confirm the identity of a harvested fruit."
+        "Pomegranate", "Punica granatum",
+        "A shrub or small tree producing fruit with juicy seed coverings.",
+        ["Fruit provides fibre and plant pigments."],
+        ["Excessive intake may cause digestive discomfort."],
+        "Eat correctly identified ripe fruit.",
+        ["Food", "Juices", "Food processing"],
+        "Ripe fruit arils are commonly eaten.",
+        ["No specific toxin assigned to ordinary ripe arils."],
+        "Excessive intake may cause digestive discomfort.",
+        "Do not assume leaves and bark have the same food uses."
     ),
+
     "Pumpkin": plant_info(
-        "Pumpkin plants are grown for their fruits and, in some varieties, edible seeds and flowers.",
-        "Edibility depends on the variety and plant part. Do not eat an unknown or unusually bitter gourd-like fruit.",
-        "Some cucurbits can contain harmful bitter compounds. Do not consume unusually bitter fruits."
+        "Pumpkin", "Cucurbita species",
+        "A creeping plant producing large fruits.",
+        ["Some varieties provide edible fruit, seeds and flowers."],
+        ["Some cucurbits can contain toxic bitter compounds."],
+        "Eat only verified food varieties. Discard unusually bitter fruit.",
+        ["Food", "Cooking", "Agriculture"],
+        "Variety- and plant-part-dependent.",
+        ["Cucurbitacins in some bitter cucurbits"],
+        "Toxic cucurbitacins can cause severe vomiting and diarrhea.",
+        "Never eat unusually bitter pumpkin or gourd."
     ),
+
     "Raddish": plant_info(
-        "Radish is grown for its edible root and, in some varieties, leaves.",
-        "Correctly identified radish roots are commonly eaten.",
-        "Confirm identity and wash produce before eating."
+        "Radish", "Raphanus sativus",
+        "A root vegetable with edible roots and some edible leafy varieties.",
+        ["Provides fibre and vitamin C."],
+        ["May cause gas or digestive discomfort."],
+        "Wash and prepare correctly identified roots and edible leaves.",
+        ["Cooking", "Food", "Agriculture"],
+        "Roots are commonly eaten; some leaves are also used as food.",
+        ["Glucosinolates"],
+        "Large quantities may cause digestive discomfort.",
+        "Confirm the variety and wash thoroughly."
     ),
+
     "Rose": plant_info(
-        "Roses are grown ornamentally and used in some food, fragrance and cosmetic products.",
-        "Only correctly identified, appropriately grown rose petals are used in some foods. Do not assume leaves are edible.",
-        "Ornamental plants may have pesticide residues. Confirm species and growing conditions."
+        "Rose", "Rosa species",
+        "A group of flowering shrubs grown for ornamental purposes.",
+        ["Flowers are used in perfumes and some food products."],
+        ["Thorns can injure skin.",
+         "Ornamental flowers may contain pesticide residues."],
+        "Only use correctly identified food-grade petals.",
+        ["Perfumes", "Cosmetics", "Ornamental gardening", "Food products"],
+        "Some petals are used in food; leaves should not be assumed edible.",
+        ["No single harmful compound applies to all roses."],
+        "Effects depend on species and pesticide exposure.",
+        "Never eat flowers from unknown or chemically treated gardens."
     ),
+
     "Sampige": plant_info(
-        "May refer to a champak tree, valued for fragrant flowers.",
-        "Do not assume leaves, flowers or other parts are edible.",
-        "Confirm the botanical species before ingestion or medicinal use."
+        "Champak", "Possibly Magnolia champaca",
+        "A tree known for fragrant flowers.",
+        ["Flowers are used in perfumes and cultural practices."],
+        ["Food safety of leaves and flowers is not established."],
+        "Use for ornamental and fragrance purposes.",
+        ["Perfumes", "Ornamental gardening", "Cultural uses"],
+        "Do not assume any part is edible.",
+        ["Species-specific composition requires verification."],
+        "Ingestion effects are not established.",
+        "Confirm the exact species before consumption."
     ),
+
     "Sapota": plant_info(
-        "Sapota (chikoo) is cultivated for its sweet fruit.",
-        "The correctly identified ripe fruit is commonly eaten.",
-        "Do not consume seeds or other parts based on this prediction."
+        "Sapota / Chikoo", "Manilkara zapota",
+        "A tropical fruit tree producing sweet brown fruits.",
+        ["Ripe fruit provides energy and dietary fibre."],
+        ["Unripe fruit may cause digestive discomfort."],
+        "Eat properly identified, ripe fruit.",
+        ["Food", "Desserts", "Beverages"],
+        "Ripe fruit is commonly eaten.",
+        ["No specific toxin assigned to normal ripe fruit."],
+        "Unripe fruit or excess intake may cause digestive discomfort.",
+        "Do not consume seeds or unidentified plant parts."
     ),
+
     "Seethaashoka": plant_info(
-        "May refer to Ashoka-related trees used ornamentally and in traditional practices.",
-        "Unknown for this identification. Do not consume.",
-        "Common names can refer to different trees. Confirm the scientific name."
-    ),
-    "Seethapala": plant_info(
-        "May refer to custard apple (Annona squamosa), grown for its fruit.",
-        "The correctly identified ripe pulp is commonly eaten; seeds must not be eaten.",
-        "Custard apple seeds contain biologically active compounds and should not be ingested."
-    ),
-    "Spinach1": plant_info(
-        "The dataset label does not identify the exact spinach species.",
-        "Unknown until the species is confirmed. Do not consume based only on this prediction.",
-        "Confirm the botanical identity and food preparation requirements."
-    ),
-    "Tamarind": plant_info(
-        "Tamarind is cultivated for its sour-sweet pulp used in food.",
-        "The correctly identified ripe pulp is commonly eaten.",
-        "Do not assume leaves, seeds or other parts are interchangeable with edible pulp."
-    ),
-    "Taro": plant_info(
-        "Taro is cultivated for its starchy corms and some edible leaves.",
-        "Only correctly identified parts prepared appropriately are eaten. Raw taro can cause intense irritation.",
-        "Do not eat raw taro. Proper preparation is essential."
-    ),
-    "Tecoma": plant_info(
-        "Tecoma species are commonly grown as ornamental flowering plants.",
-        "Edibility is not verified for this identification. Do not consume.",
-        "Confirm the species before considering any food or medicinal use."
-    ),
-    "Thumbe": plant_info(
-        "May refer to Leucas species used in some regional traditional practices.",
-        "Unknown for this identification. Do not consume based on this prediction.",
-        "Confirm the scientific name and seek qualified advice before medicinal use."
-    ),
-    "Tomato": plant_info(
-        "Tomato plants are grown for their edible fruits.",
-        "Ripe tomato fruits are commonly eaten. Leaves and stems should not be eaten as food.",
-        "Green plant parts contain glycoalkaloids and may cause illness if ingested."
-    ),
-    "Tulsi": plant_info(
-        "Tulsi (holy basil) is used as a culinary herb and in traditional wellness practices.",
-        "Commonly used as a culinary herb when correctly identified; this result does not confirm identity.",
-        "Do not use it as a replacement for prescribed treatment."
-    ),
-    "Turmeric": plant_info(
-        "Turmeric rhizomes are used as a culinary spice and colouring ingredient.",
-        "The correctly identified, prepared rhizome is commonly eaten.",
-        "The leaf prediction does not confirm the identity or safety of a harvested rhizome."
-    ),
-    "ashoka": plant_info(
-        "The label may refer to an Ashoka tree, but exact species identification is needed.",
-        "Unknown. Do not consume based on this prediction.",
-        "Do not confuse true Ashoka with similarly named ornamental trees."
-    ),
-    "camphor": plant_info(
-        "Camphor is used in some topical products, fragrances and cultural practices.",
-        "DO NOT EAT camphor or ingest camphor products; poisoning can be severe.",
-        "Keep camphor away from children. Swallowing it requires urgent medical advice."
-    ),
-    "kamakasturi": plant_info(
-        "May refer to an aromatic basil-like plant used in regional food or traditional practices; identity needs verification.",
-        "Do not consume until the exact species is confirmed.",
-        "Verify the scientific name and distinguish it from similar aromatic plants."
-    ),
-    "kepala": plant_info(
-        "This regional name needs a confirmed botanical identity before uses can be assigned.",
+        "Ashoka-related Tree", "Species unconfirmed",
+        "A regional name that may refer to different trees.",
+        ["Some similarly named trees are used ornamentally."],
+        ["Confusing different species can lead to incorrect use."],
+        "No medicinal or food use until identified.",
+        ["Ornamental gardening"],
         "Unknown. Do not consume.",
-        "Ask a botanist or agricultural expert to verify the plant."
-    )
+        ["Unknown until species is confirmed."],
+        "Cannot be predicted reliably.",
+        "Confirm the scientific name."
+    ),
+
+    "Seethapala": plant_info(
+        "Custard Apple", "Possibly Annona squamosa",
+        "A fruit tree producing sweet segmented fruits.",
+        ["Ripe fruit pulp is used as food."],
+        ["Seeds should not be eaten."],
+        "Eat only ripe pulp and discard seeds.",
+        ["Food", "Desserts", "Beverages"],
+        "Ripe pulp is commonly eaten; seeds must not be eaten.",
+        ["Annonaceous acetogenins in seeds and other parts."],
+        "Seeds may be toxic.",
+        "Never chew or swallow seeds."
+    ),
+
+    "Spinach1": plant_info(
+        "Spinach (dataset variant)", "Scientific identity unconfirmed",
+        "Dataset label does not establish the exact spinach species.",
+        ["Some spinach species are used as leafy vegetables."],
+        ["Different leafy plants have different safety profiles."],
+        "Do not consume until the species is confirmed.",
+        ["Potential food use, subject to identification"],
+        "Unknown until species is confirmed.",
+        ["Unknown"],
+        "Cannot be reliably predicted.",
+        "Verify the scientific name before use."
+    ),
+
+    "Tamarind": plant_info(
+        "Tamarind", "Tamarindus indica",
+        "A tropical tree producing pods with sour-sweet pulp.",
+        ["Pulp is used in cooking and beverages."],
+        ["Excessive intake may cause digestive discomfort."],
+        "Use properly identified ripe pulp in normal quantities.",
+        ["Cooking", "Beverages", "Food processing"],
+        "Ripe pulp is commonly eaten.",
+        ["Organic acids in fruit pulp"],
+        "Excessive intake may cause stomach discomfort.",
+        "Do not assume leaves, bark and seeds have the same food uses."
+    ),
+
+    "Taro": plant_info(
+        "Taro", "Colocasia esculenta",
+        "A tropical plant grown for its starchy underground corms.",
+        ["Properly prepared corms and some leaves are used as food."],
+        ["Raw parts can cause severe mouth and throat irritation."],
+        "Only eat correctly identified parts after thorough appropriate cooking.",
+        ["Food", "Agriculture"],
+        "Edible only with correct identification and preparation.",
+        ["Calcium oxalate raphides"],
+        "Raw taro may cause intense burning and swelling of the mouth and throat.",
+        "Never eat raw taro."
+    ),
+
+    "Tecoma": plant_info(
+        "Tecoma", "Tecoma species",
+        "A group of flowering shrubs and small trees.",
+        ["Primarily used for ornamental gardening."],
+        ["Edibility is not established for this identification."],
+        "Ornamental use only.",
+        ["Ornamental gardening"],
+        "Unknown. Do not consume.",
+        ["Species-specific compounds require verification."],
+        "Ingestion effects are not established.",
+        "Do not use as food or medicine based on prediction."
+    ),
+
+    "Thumbe": plant_info(
+        "Thumbe", "Possibly Leucas species",
+        "A regional name used for certain flowering herbs.",
+        ["Some species have traditional uses."],
+        ["Regional names may refer to more than one species."],
+        "Do not prepare herbal remedies without botanical confirmation.",
+        ["Traditional preparations"],
+        "Unknown. Do not consume.",
+        ["Species-specific composition requires verification."],
+        "Effects depend on actual species and preparation.",
+        "Confirm the scientific name."
+    ),
+
+    "Tomato": plant_info(
+        "Tomato", "Solanum lycopersicum",
+        "A cultivated plant producing edible fruits.",
+        ["Ripe fruit provides vitamin C and lycopene."],
+        ["Green plant parts are not food and may cause illness."],
+        "Eat ripe, washed fruits. Avoid leaves and stems.",
+        ["Cooking", "Food processing", "Agriculture"],
+        "Ripe fruits are commonly eaten; leaves and stems should not be eaten.",
+        ["Tomatine and related glycoalkaloids"],
+        "Eating leaves or stems may cause nausea and digestive symptoms.",
+        "Use ripe fruit only."
+    ),
+
+    "Tulsi": plant_info(
+        "Holy Basil", "Ocimum tenuiflorum",
+        "An aromatic herb used in cooking and traditional practices.",
+        ["Used in foods and beverages.",
+         "Has a history of traditional use."],
+        ["Concentrated preparations may cause interactions."],
+        "Use correctly identified leaves in normal culinary quantities.",
+        ["Cooking", "Beverages", "Traditional preparations"],
+        "Commonly used as a culinary herb.",
+        ["Eugenol and other essential-oil compounds"],
+        "Excessive concentrated preparations may cause unwanted effects.",
+        "Do not replace prescribed treatment with Tulsi."
+    ),
+
+    "Turmeric": plant_info(
+        "Turmeric", "Curcuma longa",
+        "A herbaceous plant with an underground yellow-orange rhizome.",
+        ["Rhizome is widely used as a culinary spice."],
+        ["High-dose supplements may cause digestive effects or interactions."],
+        "Use correctly identified rhizome in food.",
+        ["Cooking", "Food colouring", "Food processing"],
+        "Rhizome is commonly eaten as a spice.",
+        ["Curcuminoids"],
+        "Excessive supplement use may cause digestive upset.",
+        "Food use differs from concentrated supplements."
+    ),
+
+    "ashoka": plant_info(
+        "Ashoka", "Possibly Saraca asoca",
+        "A tree with compound leaves and clusters of flowers.",
+        ["Grown for ornamental and cultural purposes."],
+        ["Misidentification can lead to incorrect medicinal use."],
+        "Do not use medicinally until the species is verified.",
+        ["Ornamental gardening", "Traditional preparations"],
+        "Unknown. Do not consume.",
+        ["Species-specific compounds require verification."],
+        "Effects cannot be predicted without identification.",
+        "Do not confuse true Ashoka with unrelated trees."
+    ),
+
+    "camphor": plant_info(
+        "Camphor", "Possibly Cinnamomum camphora",
+        "An aromatic compound used in some topical and fragrance products.",
+        ["Used in some topical and fragrance products."],
+        ["Can cause severe poisoning if swallowed."],
+        "Use only appropriately labelled external products.",
+        ["Fragrance", "Topical products", "Cultural uses"],
+        "TOXIC. Never eat camphor.",
+        ["Camphor"],
+        "Swallowing camphor may cause vomiting, seizures and life-threatening poisoning.",
+        "Keep away from children and pets."
+    ),
+
+    "kamakasturi": plant_info(
+        "Kamakasturi", "Species unconfirmed",
+        "Regional name associated with aromatic plants.",
+        ["Some related plants are used in food or traditional preparations."],
+        ["Similar regional names may refer to different species."],
+        "Do not consume until the exact species is verified.",
+        ["Potential culinary or traditional use, subject to confirmation"],
+        "Unknown until species is confirmed.",
+        ["Unknown"],
+        "Effects cannot be predicted reliably.",
+        "Confirm the scientific name."
+    ),
+
+    "kepala": plant_info(
+        "Kepala", "Scientific identity unconfirmed",
+        "Regional dataset name requiring botanical verification.",
+        ["No verified species-specific benefits assigned."],
+        ["Incorrect identification may result in unsafe use."],
+        "No recommended use until species is confirmed.",
+        ["Not established"],
+        "Unknown. Do not consume.",
+        ["Unknown"],
+        "Unknown.",
+        "Obtain a confirmed scientific name from a botanical expert."
+    ),
+
+
 }
-
-
 DEFAULT_PLANT_INFO = {
-    "uses": "Information is not available for this label.",
-    "edibility": "UNKNOWN. Do not eat or taste this plant based on an AI prediction.",
-    "safety": "Confirm the species with a reliable botanical source or qualified expert."
+    "common_name": "Unknown plant",
+    "scientific_name": "Not verified",
+    "description": "Plant identity requires verification.",
+    "benefits": ["Information not verified."],
+    "disadvantages": ["Incorrect identification may be unsafe."],
+    "proper_usage": "Do not consume until identified.",
+    "applications": ["Not established"],
+    "uses": "Information not available.",
+    "edibility": "UNKNOWN. Do not consume based on AI prediction.",
+    "harmful_compounds": ["Unknown"],
+    "if_consumed": "Effects cannot be determined.",
+    "precautions": "Consult a botanical expert.",
+    "safety": "Do not consume until the species is verified."
 }
-
 
 
 # LOAD MODEL
