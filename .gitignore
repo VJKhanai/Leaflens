@@ -1,35 +1,67 @@
-# Python environments
+# Python environments and generated files
 .venv/
 .venv_ubuntu/
 .venv_linux_backup/
 venv/
+vit-venv/
+env/
 __pycache__/
 *.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Node.js
 node_modules/
 frontend/node_modules/
 frontend/dist/
+frontend/.output/
+frontend/.wrangler/
+dist/
+build/
+coverage/
 
 # Environment variables
 .env
 .env.*
 !.env.example
 
-# Training datasets
+# Hugging Face caches and model weights
+.cache/huggingface/
+**/.cache/huggingface/
+.huggingface/
+huggingface_cache/
+*.keras
+*.h5
+*.pt
+*.pth
+*.safetensors
+pytorch_model*.bin
+model*.bin
+
+# Local datasets and generated evaluation results
+/datasets/
 ML/data/
+ML/datasets/
+ML/medicinal_vit/evaluation/results/
 ML/hybrid_quarantine/
 ML/hybrid_duplicate_review.jpg
 ML/hybrid_error_review.jpg
-
-# Model files
-*.keras
-*.h5
 
 # Generated reports
 ML/*_manifest.csv
 ML/*_duplicates.csv
 ML/*_candidates.csv
+
+# Temporary image samples used during local checks
+/test_*.png
+/test_*.jpg
+/test_*.jpeg
+/test_*.bmp
+
+# Logs
+*.log
+npm-debug.log*
 
 # OS files
 .DS_Store

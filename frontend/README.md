@@ -21,6 +21,39 @@ npm i
 npm run dev
 ```
 
+## Plant identification services
+
+The existing `POST /predict` endpoint forwards images to the independent ViT
+service at `POST /medicinal/predict`; the frontend continues to use the same
+upload workflow. The ViT process runs in `vit-venv` on port 5001, and the
+existing Flask API runs on port 8000. During local development Vite proxies
+`/predict` and `/plant-info` to port 8000.
+
+Start the services in separate PowerShell terminals from the repository root:
+
+```powershell
+# Existing Flask environment
+python -m backend.app
+
+# ViT environment
+.\vit-venv\Scripts\Activate.ps1
+python -m backend.medicinal_vit.app
+
+# Frontend terminal
+Set-Location frontend
+npm run dev
+```
+
+The Flask API also exposes `GET /plant-info?name=<plant-name>`. Structured
+reports use GBIF for high-confidence taxonomy, vernacular names, and attributed
+descriptions. Common-name queries resolve only when GBIF has an exact vernacular
+match to one accepted species; ambiguous names remain unresolved. Europe PMC
+provides linked literature search results. Literature
+matches are not treated as proof of clinical benefit. Edibility, toxicity,
+medicinal-use, and safety fields remain explicitly unknown unless supported by
+verified sources; the ViT prediction itself never establishes identity or
+safety. References include direct links and access dates where available.
+
 ## Built with
 
 - TanStack Start

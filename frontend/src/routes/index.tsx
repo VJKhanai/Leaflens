@@ -17,12 +17,12 @@ export const Route = createFileRoute("/")({
       { title: "LeafLens AI — Identify a plant from a leaf photo" },
       {
         name: "description",
-        content: "Upload a leaf photo and LeafLens AI predicts the species, its model score, reported uses and safety notes.",
+        content: "Upload a leaf photo to see LeafLens AI's top model predictions and source-linked botanical information.",
       },
       { property: "og:title", content: "LeafLens AI — Identify a plant from a leaf photo" },
       {
         property: "og:description",
-        content: "AI leaf identification with species prediction, reported uses and safety information.",
+        content: "Leaf-image classification with top model predictions and source-linked botanical information.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -33,8 +33,8 @@ export const Route = createFileRoute("/")({
 
 const STEPS = [
   { icon: Camera, title: "Photograph", text: "Shoot one leaf against a plain background in good, even light." },
-  { icon: Cpu, title: "Analyse", text: "A MobileNetV2 model trained with TensorFlow reads shape, margin and veins." },
-  { icon: FileSearch, title: "Review", text: "See one predicted species, its score, reported uses and safety notes." },
+  { icon: Cpu, title: "Analyse", text: "An 80-class Vision Transformer analyses the leaf image." },
+  { icon: FileSearch, title: "Review", text: "Review the top five model labels and source-linked botanical information." },
 ];
 
 function Index() {
@@ -143,8 +143,7 @@ function Index() {
             ))}
           </h1>
           <p className="js-hero-fade mt-7 max-w-md text-lg leading-relaxed text-muted-foreground">
-            Upload a single leaf photo. LeafLens predicts the species and shows its model score, reported uses and
-            safety information.
+            Upload a leaf photo. LeafLens shows the model's top predictions and a source-linked botanical report.
           </p>
           <div className="js-hero-fade mt-9 flex flex-wrap items-center gap-4">
             <Button variant="hero" size="xl" asChild>
@@ -175,7 +174,7 @@ function Index() {
 
           <div className="js-chip js-chip-a absolute -left-4 top-10 rounded-2xl border border-border bg-card/95 px-4 py-3 shadow-soft backdrop-blur sm:-left-10">
             <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Model</p>
-            <p className="font-display text-lg">MobileNetV2</p>
+            <p className="font-display text-lg">Vision Transformer</p>
           </div>
           <div className="js-chip js-chip-b absolute -right-3 bottom-12 flex items-center gap-3 rounded-2xl bg-forest px-4 py-3 text-forest-foreground shadow-lift sm:-right-8">
             <span className="grid size-9 place-items-center rounded-full bg-accent text-accent-foreground">
@@ -243,7 +242,7 @@ function Index() {
           <span className="flex items-center gap-2">
             <Leaf className="size-4 text-primary" /> LeafLens AI
           </span>
-          <span>Built with TensorFlow &amp; MobileNetV2</span>
+          <span>Powered by the Hugging Face ViT classifier</span>
         </div>
       </footer>
     </div>

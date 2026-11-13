@@ -4,8 +4,11 @@ import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import {
   AlertTriangle,
+  BookOpen,
   Camera,
+  ExternalLink,
   ImageUp,
+  Info,
   Leaf,
   Loader2,
   RotateCcw,
@@ -15,9 +18,38 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { predictLeaf, validateFile, type Prediction } from "@/lib/leaflens";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
+  fetchPlantReport,
+  predictLeaf,
+  validateFile,
+  type EdibilityClassification,
+  type PlantReport,
+  type PlantReportReference,
+  type Prediction,
+} from "@/lib/leaflens";
 
 gsap.registerPlugin(useGSAP);
+
+const EDIBILITY_TONES: Record<EdibilityClassification, string> = {
+  Edible: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
+  "Not edible": "bg-destructive/10 text-destructive",
+  "Conditionally edible": "bg-caution text-caution-foreground",
+  "Unknown / Insufficient evidence": "bg-muted text-muted-foreground",
+};
+
+const SAFETY_TONES: Record<PlantReport["safety_assessment"]["category"], string> = {
+  "Generally considered safe for documented uses":
+    "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
+  "Use with caution": "bg-caution text-caution-foreground",
+  "Potentially harmful / Toxic": "bg-destructive/10 text-destructive",
+  "Insufficient safety information": "bg-muted text-muted-foreground",
+};
 
 export function Identifier() {
   // References
@@ -34,8 +66,14 @@ export function Identifier() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Prediction | null>(null);
+  const [plantReport, setPlantReport] = useState<PlantReport | null>(null);
+  const [plantReportLoading, setPlantReportLoading] = useState(false);
+  const [plantReportError, setPlantReportError] = useState<string | null>(null);
+  const [plantReportQuery, setPlantReportQuery] = useState("");
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const reportRequest = useRef(0);
+  const predictionRequest = useRef(0);
 
   const { contextSafe } = useGSAP({ scope: root });
 
@@ -65,8 +103,15 @@ export function Identifier() {
 
   // Select or remove an image
   const selectFile = (next: File | null | undefined) => {
+    reportRequest.current += 1;
+    predictionRequest.current += 1;
     setResult(null);
     setError(null);
+    setPlantReport(null);
+    setPlantReportError(null);
+    setPlantReportLoading(false);
+    setPlantReportQuery("");
+    setLoading(false);
 
     if (inputRef.current) {
       inputRef.current.value = "";
@@ -87,6 +132,29 @@ export function Identifier() {
 
     setFile(next);
     setPreviewUrl(URL.createObjectURL(next));
+  };
+
+  const loadPlantReport = async (name: string, requestId: number, refresh = false) => {
+    setPlantReportQuery(name);
+    setPlantReportLoading(true);
+    setPlantReportError(null);
+    setPlantReport(null);
+    try {
+      const report = await fetchPlantReport(name, refresh);
+      if (requestId === reportRequest.current) {
+        setPlantReport(report);
+      }
+    } catch (err) {
+      if (requestId === reportRequest.current) {
+        setPlantReportError(
+          err instanceof Error ? err.message : "Unable to retrieve plant information."
+        );
+      }
+    } finally {
+      if (requestId === reportRequest.current) {
+        setPlantReportLoading(false);
+      }
+    }
   };
 
   // Start camera
@@ -240,6 +308,7 @@ export function Identifier() {
   // Identify leaf
   const onIdentify = contextSafe(async () => {
     if (!file) return;
+    const requestId = ++predictionRequest.current;
 
     gsap.fromTo(
       ".js-identify",
@@ -253,13 +322,27 @@ export function Identifier() {
 
     try {
       const prediction = await predictLeaf(file);
+      if (requestId !== predictionRequest.current) return;
       setResult(prediction);
+      const scientificName = prediction.scientific_name;
+      const hasVerifiedScientificName =
+        scientificName &&
+        scientificName !== "Not available" &&
+        !/unconfirmed|unknown|possibly|not verified/i.test(scientificName);
+      const lookupName = hasVerifiedScientificName
+        ? scientificName
+        : prediction.common_name !== "Not available"
+          ? prediction.common_name
+          : prediction.name;
+      void loadPlantReport(lookupName, ++reportRequest.current);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Prediction failed."
-      );
+      if (requestId === predictionRequest.current) {
+        setError(err instanceof Error ? err.message : "Prediction failed.");
+      }
     } finally {
-      setLoading(false);
+      if (requestId === predictionRequest.current) {
+        setLoading(false);
+      }
     }
   });
 
@@ -543,19 +626,19 @@ export function Identifier() {
                 </p>
 
                 <h3 className="mt-2 break-words text-3xl font-semibold">
-                  {result.common_name}
+                  {result.name}
                 </h3>
 
                 <p className="mt-1 italic text-muted-foreground">
-                  {result.scientific_name}
+                  Scientific name not provided by the classifier
                 </p>
 
                 <p className="mt-3 font-semibold text-primary">
-                  Model score: {result.score.toFixed(2)}%
+                  ViT model confidence: {result.score.toFixed(2)}%
                 </p>
 
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Predicted species: {result.name}
+                  Leaf-image prediction · 80 classes
                 </p>
 
               </div>
@@ -563,79 +646,317 @@ export function Identifier() {
 
             <div className="js-reveal border-t border-border" />
 
-            {/* BENEFITS AND APPLICATIONS */}
+            <section className="js-reveal rounded-2xl border border-border bg-muted/40 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <h4 className="text-lg font-semibold">Top 5 predictions</h4>
+                <span className="text-xs text-muted-foreground">Confidence</span>
+              </div>
+              <ol className="mt-3 space-y-2">
+                {result.predictions.map((prediction, index) => (
+                  <li
+                    key={prediction.class_index}
+                    className="flex items-center justify-between gap-4 rounded-xl bg-card px-3 py-2 text-sm"
+                  >
+                    <span className="min-w-0 truncate">
+                      <span className="mr-2 font-mono text-muted-foreground">{index + 1}.</span>
+                      {prediction.class_name}
+                    </span>
+                    <span className="shrink-0 font-mono font-semibold">
+                      {prediction.confidence_percent.toFixed(2)}%
+                    </span>
+                  </li>
+                ))}
+              </ol>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Predictions are based on leaf images and do not verify species identity or plant safety.
+              </p>
+            </section>
 
-            <div className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
+            <section className="js-reveal space-y-4" aria-labelledby="research-report-title">
+              <div>
+                <h4 id="research-report-title" className="flex items-center gap-2 text-xl font-semibold">
+                  <BookOpen className="size-5 text-primary" />
+                  Botanical research report
+                </h4>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Source-linked taxonomy and literature. Missing data is shown as unverified, not inferred.
+                </p>
+              </div>
 
-              <ReportSection
-                icon={<Leaf className="size-5 text-primary" />}
-                title="Benefits"
-                items={result.benefits}
-              />
+              {plantReportLoading && (
+                <p role="status" className="flex items-center gap-2 rounded-xl bg-muted px-4 py-3 text-sm">
+                  <Loader2 className="size-4 animate-spin" />
+                  Retrieving botanical sources…
+                </p>
+              )}
 
-              <ReportSection
-                icon={<AlertTriangle className="size-5 text-destructive" />}
-                title="Disadvantages"
-                items={result.disadvantages}
-              />
+              {plantReportError && (
+                <div role="alert" className="rounded-xl border border-caution-border bg-caution p-4 text-sm text-caution-foreground">
+                  <p>{plantReportError}</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={() => loadPlantReport(
+                      plantReportQuery,
+                      ++reportRequest.current,
+                      true
+                    )}
+                  >
+                    <RotateCcw className="size-4" />
+                    Retry report
+                  </Button>
+                </div>
+              )}
 
-              <ReportSection
-                icon={<Leaf className="size-5 text-primary" />}
-                title="Proper usage"
-                text={result.proper_usage}
-              />
+              {plantReport && (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-border bg-muted/40 p-4">
+                    <p className="flex items-start gap-2 text-sm">
+                      <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                      {plantReport.basic_information.identity_warning}
+                    </p>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {plantReport.taxonomy
+                        ? `GBIF species-match confidence: ${plantReport.taxonomy.confidence}%. This is not image-identification confidence.`
+                        : "Species-level identity was not verified; species-specific information is unavailable."}
+                    </p>
+                  </div>
 
-              <ReportSection
-                icon={<Leaf className="size-5 text-primary" />}
-                title="Where it's used"
-                items={result.applications}
-              />
+                  <Accordion
+                    type="multiple"
+                    defaultValue={["overview"]}
+                    className="rounded-2xl border border-border px-4"
+                  >
+                    <AccordionItem value="overview">
+                      <AccordionTrigger>
+                        <span className="flex items-center gap-2">
+                          <Leaf className="size-4 text-primary" />
+                          Plant overview
+                        </span>
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-4">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <InformationValue label="Common name" value={plantReport.basic_information.common_name} />
+                          <InformationValue label="Scientific name" value={plantReport.basic_information.scientific_name} />
+                          <InformationValue label="Family" value={plantReport.basic_information.family} />
+                          <InformationValue label="Native region / distribution" value={plantReport.basic_information.native_region} />
+                        </div>
+                        <InformationValue label="Botanical description" value={plantReport.basic_information.description} />
+                        <div>
+                          <h5 className="text-sm font-semibold">Other common or regional names</h5>
+                          {plantReport.basic_information.other_names.length ? (
+                            <ul className="mt-1 list-inside list-disc text-sm text-foreground/80">
+                              {plantReport.basic_information.other_names.map(({ name, language }, index) => (
+                                <li key={`${name}-${language ?? index}`}>
+                                  {name}{language ? ` (${language})` : ""}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="mt-1 text-sm text-muted-foreground">No additional verified names available.</p>
+                          )}
+                        </div>
+                        <ReferenceLinks
+                          referenceIds={plantReport.basic_information.reference_ids}
+                          references={plantReport.references}
+                        />
+                      </AccordionContent>
+                    </AccordionItem>
 
-            </div>
+                    <AccordionItem value="edibility">
+                      <AccordionTrigger>
+                        <span className="flex items-center gap-2">
+                          <ShieldCheck className="size-4 text-primary" />
+                          Edibility &amp; food safety
+                        </span>
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-4">
+                        <span className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${EDIBILITY_TONES[plantReport.edibility.classification]}`}>
+                          {plantReport.edibility.classification}
+                        </span>
+                        <p className="text-sm leading-relaxed text-foreground/80">
+                          {plantReport.edibility.summary}
+                        </p>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <InformationList label="Verified edible parts" items={plantReport.edibility.edible_parts} />
+                          <InformationList label="Parts to avoid" items={plantReport.edibility.parts_to_avoid} />
+                          <InformationValue label="Required preparation" value={plantReport.edibility.preparation} />
+                          <InformationValue label="Toxicity concerns" value={plantReport.edibility.toxicity_concerns} />
+                        </div>
+                        <ReferenceLinks
+                          referenceIds={plantReport.edibility.reference_ids}
+                          references={plantReport.references}
+                        />
+                      </AccordionContent>
+                    </AccordionItem>
 
-            {/* DESCRIPTION */}
+                    <AccordionItem value="medicinal">
+                      <AccordionTrigger>
+                        <span className="flex items-center gap-2">
+                          <BookOpen className="size-4 text-primary" />
+                          Medicinal benefits &amp; evidence
+                        </span>
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-4">
+                        <p className="text-sm leading-relaxed text-foreground/80">
+                          {plantReport.medicinal_benefits.evidence_summary}
+                        </p>
+                        <InformationList label="Traditionally reported uses" items={plantReport.medicinal_benefits.traditional_uses} />
+                        <InformationList label="Documented properties (not clinical advice)" items={plantReport.medicinal_benefits.documented_properties} />
+                        <InformationList label="Parts traditionally used" items={plantReport.medicinal_benefits.parts_traditionally_used} />
+                        {plantReport.medicinal_benefits.literature_search_results.map((paper) => (
+                          <article key={paper.url} className="rounded-xl bg-muted/50 p-3">
+                            <a
+                              href={paper.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="font-medium text-primary underline"
+                            >
+                              {paper.title} <ExternalLink className="inline size-3" />
+                            </a>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {[paper.authors, paper.journal, paper.publication_date ?? paper.year]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </p>
+                            {paper.abstract && (
+                              <p className="mt-2 line-clamp-5 whitespace-pre-line text-sm leading-relaxed">
+                                {paper.abstract}
+                              </p>
+                            )}
+                          </article>
+                        ))}
+                        <ReferenceLinks
+                          referenceIds={plantReport.medicinal_benefits.reference_ids}
+                          references={plantReport.references}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Literature search matches are not proof of efficacy; no treatment or dosage advice is provided.
+                        </p>
+                      </AccordionContent>
+                    </AccordionItem>
 
-            <ReportSection
-              icon={<Leaf className="size-5 text-primary" />}
-              title="Plant description"
-              text={result.description}
-            />
+                    <AccordionItem value="disadvantages">
+                      <AccordionTrigger>
+                        <span className="flex items-center gap-2">
+                          <AlertTriangle className="size-4 text-destructive" />
+                          Disadvantages &amp; side effects
+                        </span>
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-4">
+                        <InformationList label="Known side effects" items={plantReport.disadvantages.known_side_effects} />
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <InformationValue label="Toxicity concerns" value={plantReport.disadvantages.toxicity_concerns} />
+                          <InformationValue label="Possible allergic reactions" value={plantReport.disadvantages.allergic_reactions} />
+                          <InformationValue label="Excessive consumption risks" value={plantReport.disadvantages.excessive_consumption_risks} />
+                          <InformationValue label="Incorrect preparation risks" value={plantReport.disadvantages.preparation_risks} />
+                          <InformationValue label="Documented medication interactions" value={plantReport.disadvantages.medication_interactions} />
+                        </div>
+                        <p className="text-sm text-muted-foreground">{plantReport.disadvantages.summary}</p>
+                        <ReferenceLinks
+                          referenceIds={plantReport.disadvantages.reference_ids}
+                          references={plantReport.references}
+                        />
+                      </AccordionContent>
+                    </AccordionItem>
 
-            {/* SAFETY INFORMATION */}
+                    <AccordionItem value="uses">
+                      <AccordionTrigger>
+                        <span className="flex items-center gap-2">
+                          <Sparkles className="size-4 text-primary" />
+                          Documented uses
+                        </span>
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-4">
+                        <InformationList label="Traditional medicinal" items={plantReport.uses.traditional_medicinal} />
+                        <InformationList label="Culinary" items={plantReport.uses.culinary} />
+                        <InformationList label="Agricultural or gardening" items={plantReport.uses.agricultural_gardening} />
+                        <InformationList label="Commercial or industrial" items={plantReport.uses.commercial_industrial} />
+                        <InformationList label="Other documented applications" items={plantReport.uses.other_documented} />
+                        <ReferenceLinks
+                          referenceIds={plantReport.uses.reference_ids}
+                          references={plantReport.references}
+                        />
+                      </AccordionContent>
+                    </AccordionItem>
 
-            <div className="js-reveal space-y-5 border-t border-border pt-6">
+                    <AccordionItem value="safety">
+                      <AccordionTrigger>
+                        <span className="flex items-center gap-2">
+                          <ShieldCheck className="size-4 text-primary" />
+                          Safety assessment
+                        </span>
+                      </AccordionTrigger>
+                      <AccordionContent className="space-y-3">
+                        <p className={`inline-flex rounded-full px-3 py-1 text-sm font-semibold ${SAFETY_TONES[plantReport.safety_assessment.category]}`}>
+                          {plantReport.safety_assessment.category}
+                        </p>
+                        <p className="text-sm leading-relaxed text-foreground/80">
+                          {plantReport.safety_assessment.summary}
+                        </p>
+                        <p className="flex items-start gap-2 rounded-xl bg-caution p-3 text-sm text-caution-foreground">
+                          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+                          {plantReport.safety_assessment.ingestion_warning}
+                        </p>
+                        <ReferenceLinks
+                          referenceIds={plantReport.safety_assessment.reference_ids}
+                          references={plantReport.references}
+                        />
+                      </AccordionContent>
+                    </AccordionItem>
 
-              <ReportSection
-                icon={<ShieldCheck className="size-5 text-primary" />}
-                title="Edibility"
-                text={result.edibility}
-              />
-
-              <ReportSection
-                icon={<AlertTriangle className="size-5 text-destructive" />}
-                title="Harmful compounds"
-                text={result.harmful_compounds}
-              />
-
-              <ReportSection
-                icon={<AlertTriangle className="size-5 text-destructive" />}
-                title="What happens if consumed?"
-                text={result.if_consumed}
-              />
-
-              <ReportSection
-                icon={<ShieldCheck className="size-5 text-primary" />}
-                title="Safety precautions"
-                text={result.precautions}
-              />
-
-            </div>
-
-            {/* WARNING */}
+                    <AccordionItem value="references">
+                      <AccordionTrigger>
+                        <span className="flex items-center gap-2">
+                          <ExternalLink className="size-4 text-primary" />
+                          Scientific references
+                        </span>
+                      </AccordionTrigger>
+                      <AccordionContent>
+                        {plantReport.references.length ? (
+                          <ul className="space-y-3">
+                            {plantReport.references.map((reference) => (
+                              <li key={reference.id} className="rounded-xl bg-muted/50 p-3 text-sm">
+                                <a
+                                  href={reference.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="font-medium text-primary underline"
+                                >
+                                  {reference.title} <ExternalLink className="inline size-3" />
+                                </a>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  {[reference.source, reference.author, reference.publication_date ?? reference.year]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                  {reference.accessed_at ? ` · Accessed ${reference.accessed_at}` : ""}
+                                </p>
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Supports: {reference.supports.join(", ")}
+                                </p>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No verified source records are available.</p>
+                        )}
+                        <div className="mt-4 flex flex-wrap gap-2 text-xs">
+                          {plantReport.sources.map((source) => (
+                            <span key={source.name} className="rounded-full bg-muted px-3 py-1">
+                              {source.name}: {source.status.replaceAll("_", " ")}
+                            </span>
+                          ))}
+                        </div>
+                      </AccordionContent>
+                    </AccordionItem>
+                  </Accordion>
+                </div>
+              )}
+            </section>
 
             <p className="js-reveal text-sm leading-relaxed text-muted-foreground">
-              {result.warning} Plant identification must be independently
-              verified before any use or consumption.
+              AI leaf classification is not a safety test. Verify the plant with a qualified botanist before any use or consumption.
             </p>
 
             {/* IDENTIFY ANOTHER LEAF */}
@@ -677,45 +998,67 @@ export function Identifier() {
 }
 
 
-// REUSABLE PLANT INFORMATION SECTION
-
-function ReportSection({
-  icon,
-  title,
-  text,
-  items,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  text?: string;
-  items?: string[];
-}) {
+function InformationValue({ label, value }: { label: string; value: string | null }) {
   return (
-    <div className="js-reveal space-y-2">
+    <div>
+      <h5 className="text-sm font-semibold">{label}</h5>
+      <p className="mt-1 whitespace-pre-line text-sm text-foreground/80">
+        {value?.trim() || "Information not verified."}
+      </p>
+    </div>
+  );
+}
 
-      <h4 className="flex items-center gap-3 text-lg font-semibold">
-        {icon}
-        {title}
-      </h4>
-
-      {text && (
-        <p className="whitespace-pre-line text-base leading-relaxed text-foreground/80">
-          {text}
-        </p>
-      )}
-
-      {items && (
-        <ul className="space-y-1 text-base leading-relaxed text-foreground/80">
-          {items.length > 0 ? (
-            items.map((item, index) => (
-              <li key={index}>• {item}</li>
-            ))
-          ) : (
-            <li>Information not available.</li>
-          )}
+function InformationList({ label, items }: { label: string; items: string[] }) {
+  return (
+    <div>
+      <h5 className="text-sm font-semibold">{label}</h5>
+      {items.length ? (
+        <ul className="mt-1 list-inside list-disc space-y-1 text-sm text-foreground/80">
+          {items.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
         </ul>
+      ) : (
+        <p className="mt-1 text-sm text-muted-foreground">Information not verified.</p>
       )}
+    </div>
+  );
+}
 
+function ReferenceLinks({
+  referenceIds,
+  references,
+}: {
+  referenceIds: string[];
+  references: PlantReportReference[];
+}) {
+  const citedReferences = referenceIds
+    .map((id) => references.find((reference) => reference.id === id))
+    .filter((reference): reference is PlantReportReference => reference !== undefined);
+
+  if (!citedReferences.length) return null;
+
+  return (
+    <div>
+      <h5 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Sources for this information
+      </h5>
+      <ul className="mt-1 space-y-1 text-sm">
+        {citedReferences.map((reference) => (
+          <li key={reference.id}>
+            <a
+              href={reference.url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary underline"
+            >
+              {reference.source}: {reference.title} <ExternalLink className="inline size-3" />
+            </a>
+            {reference.accessed_at ? (
+              <span className="text-xs text-muted-foreground"> · Accessed {reference.accessed_at}</span>
+            ) : null}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

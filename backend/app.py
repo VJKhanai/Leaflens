@@ -1,31 +1,40 @@
+import os
 import json
+import uuid
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request as URLRequest, urlopen
 
-import numpy as np
-import tensorflow as tf
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, current_app, jsonify, request, render_template
 from flask_cors import CORS
-from PIL import Image, UnidentifiedImageError
+
+if __package__:
+    from .plant_reports import plant_reports_blueprint
+else:
+    from plant_reports import plant_reports_blueprint
 
 # PATHS
 ROOT = Path(__file__).resolve().parents[1]
 
-MODEL_PATH = ROOT / "ML" / "models" / "leaflens_mobilenetv2_hybrid_finetuned.keras"
-
-LABELS_PATH = ROOT / "ML" / "models" / "class_names_hybrid.json"
 TEMPLATE_DIR = ROOT / "frontend" / "templates"
 
-IMAGE_SIZE = (160, 160)
 MAX_FILE_SIZE = 10 * 1024 * 1024
-LOW_CONFIDENCE_THRESHOLD = 60.0
+MEDICINAL_VIT_PREDICT_URL = os.environ.get(
+    "MEDICINAL_VIT_PREDICT_URL",
+    "http://127.0.0.1:5001/medicinal/predict",
+)
+VIT_REQUEST_TIMEOUT_SECONDS = 120
 
 app = Flask(__name__, template_folder=str(TEMPLATE_DIR))
 app.config["MAX_CONTENT_LENGTH"] = MAX_FILE_SIZE
 
 # React/Vite development server runs on port 8080.
-CORS(app, resources={r"/predict": {"origins": [
-    "http://localhost:8080", "http://127.0.0.1:8080"
-]}})
+CORS(app, resources={
+    r"/predict": {"origins": ["http://localhost:8080", "http://127.0.0.1:8080"]},
+    r"/plant-info": {"origins": ["http://localhost:8080", "http://127.0.0.1:8080"]},
+})
+app.register_blueprint(plant_reports_blueprint)
 
 
 # =========================================================
@@ -1132,25 +1141,6 @@ DEFAULT_PLANT_INFO = {
 }
 
 
-# LOAD MODEL
-if not MODEL_PATH.is_file():
-    raise FileNotFoundError(f"Model not found: {MODEL_PATH}")
-
-if not LABELS_PATH.is_file():
-    raise FileNotFoundError(f"Labels not found: {LABELS_PATH}")
-
-model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-
-with LABELS_PATH.open("r", encoding="utf-8") as file:
-    class_names = json.load(file)
-
-if model.output_shape[-1] != len(class_names):
-    raise ValueError("Model output count does not match class labels.")
-
-print(f"Model loaded: {MODEL_PATH.name}")
-print(f"Plant classes: {len(class_names)}")
-
-
 # WEBSITE
 @app.get("/")
 def home():
@@ -1168,7 +1158,9 @@ def health():
     return jsonify({
         "status": "healthy",
         "app": "LeafLens AI",
-        "classes": len(class_names)
+        "active_model": "dhivyasri-d/vit-plant-classifier",
+        "architecture": "Vision Transformer (ViT)",
+        "classes": 80,
     })
 
 
@@ -1183,50 +1175,86 @@ def predict():
     if not uploaded_file.filename:
         return jsonify({"error": "Please select an image."}), 400
 
-    try:
-        with Image.open(uploaded_file.stream) as original:
-            # Convert to RGB; do not normalize because the model includes
-            # MobileNetV2 preprocessing internally.
-            image = original.convert("RGB")
-            image_array = np.asarray(image, dtype=np.float32)
+    mime_type = (uploaded_file.mimetype or "").lower()
+    if mime_type not in {"image/jpeg", "image/png", "image/bmp", "image/x-ms-bmp"}:
+        return jsonify({"error": "Unsupported image type. Upload a JPG, PNG, or BMP image."}), 400
 
-        image_array = tf.image.resize(
-            image_array, IMAGE_SIZE, method="bilinear"
-        )
-        image_array = np.expand_dims(image_array.numpy(), axis=0)
-
-        # Preprocessing is already inside the trained model.
-        probabilities = model.predict(image_array, verbose=0)[0]
-
-        # Return only the highest-scoring prediction.
-        predicted_index = int(np.argmax(probabilities))
-        species = str(class_names[predicted_index])
-        confidence = float(probabilities[predicted_index]) * 100
-
-        low_confidence = confidence < LOW_CONFIDENCE_THRESHOLD
-
-        # Match plant information to the predicted label.
-        info = PLANT_INFO.get(species, DEFAULT_PLANT_INFO)
-
-        warning = (
-            "Low-confidence result. The plant identity is uncertain."
-            if low_confidence else
-            "AI prediction only. The model score does not prove "
-            "plant identity, edibility, or medicinal safety."
-        )
-
-        return jsonify({
-            "prediction": species,
-            "confidence": round(confidence, 2),
-            "low_confidence": low_confidence,
-            "warning": warning,
-            "plant_info": info
-        })
-
-    except (UnidentifiedImageError, OSError, ValueError):
+    image_bytes = uploaded_file.stream.read(MAX_FILE_SIZE + 1)
+    if len(image_bytes) > MAX_FILE_SIZE:
+        return jsonify({"error": "Image exceeds the 10 MB upload limit."}), 413
+    if not image_bytes:
         return jsonify({
             "error": "Invalid image. Upload a valid JPG, PNG, or BMP."
         }), 400
+
+    boundary = "LeafLens" + uuid.uuid4().hex
+    body = b"".join([
+        f"--{boundary}\r\n".encode("ascii"),
+        b'Content-Disposition: form-data; name="file"; filename="leaf-image"\r\n',
+        f"Content-Type: {mime_type}\r\n\r\n".encode("ascii"),
+        image_bytes,
+        f"\r\n--{boundary}--\r\n".encode("ascii"),
+    ])
+    url = MEDICINAL_VIT_PREDICT_URL
+    separator = "&" if "?" in url else "?"
+    url_request = URLRequest(
+        f"{url}{separator}{urlencode({'include_all': 'true'})}",
+        data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+
+    try:
+        with urlopen(url_request, timeout=VIT_REQUEST_TIMEOUT_SECONDS) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    except HTTPError as error:
+        if error.code in {400, 413}:
+            try:
+                details = json.loads(error.read().decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                details = {}
+            return jsonify({
+                "error": details.get("error", "The uploaded image was rejected.")
+            }), error.code
+        current_app.logger.error("ViT service returned HTTP %s", error.code)
+        return jsonify({"error": "The plant prediction service is unavailable."}), 502
+    except (URLError, TimeoutError, OSError, UnicodeDecodeError, json.JSONDecodeError):
+        current_app.logger.exception("Unable to retrieve a prediction from the ViT service")
+        return jsonify({"error": "The plant prediction service is unavailable. Please try again."}), 503
+
+    predictions = result.get("predictions") if isinstance(result, dict) else None
+    all_predictions = result.get("all_predictions") if isinstance(result, dict) else None
+    if (
+        not isinstance(predictions, list)
+        or not predictions
+        or not isinstance(all_predictions, list)
+        or len(all_predictions) != 80
+        or result.get("class_count") != 80
+    ):
+        current_app.logger.error("ViT service returned an invalid prediction payload")
+        return jsonify({"error": "The plant prediction service returned an invalid response."}), 502
+
+    top_prediction = predictions[0]
+    if (
+        not isinstance(top_prediction, dict)
+        or not isinstance(top_prediction.get("class_name"), str)
+        or not isinstance(top_prediction.get("confidence_percent"), (int, float))
+    ):
+        current_app.logger.error("ViT service returned an invalid top prediction")
+        return jsonify({"error": "The plant prediction service returned an invalid response."}), 502
+
+    return jsonify({
+        "prediction": top_prediction["class_name"],
+        "confidence": top_prediction["confidence_percent"],
+        "predictions": predictions[:5],
+        "all_predictions": all_predictions,
+        "class_count": 80,
+        "model": "dhivyasri-d/vit-plant-classifier",
+        "warning": (
+            "Leaf-image model prediction only. Verify the plant identity; "
+            "this result does not establish edibility or medicinal safety."
+        ),
+    })
 
 
 @app.errorhandler(413)
